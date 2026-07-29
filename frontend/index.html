@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FNAF Web Clone Template</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div id="gameWindow">
+        <div id="office">
+            <div id="leftDoor" class="door"></div>
+            <div id="rightDoor" class="door"></div>
+        </div>
+
+        <div id="leftButtons" class="button-panel">
+            <button id="toggleLeft" type="button" class="panel-button"></button>
+        </div>
+        <div id="rightButtons" class="button-panel">
+            <button id="toggleRight" type="button" class="panel-button"></button>
+        </div>
+
+        <div id="cameraContainer">
+            <div id="cameraSystem">
+                <div class="static-effect">CAMERA SYSTEM ACTIVE</div>
+                <div class="camera-content">
+                    <img id="cameraFeed" src="textures/camera/office cam/46.png" alt="Camera Feed">
+                    <div class="camera-label">
+                        <img id="cameraNameLabel" src="textures/camera/camera names/70.png" alt="Camera Name">
+                    </div>
+                    <div class="red-dot"></div>
+                </div>
+            </div>
+            <div id="cameraDropdown"></div>
+        </div>
+
+        <img id="cameraAnimation" src="" alt="Camera Animation" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; object-fit:contain; background:rgba(0,0,0,0.9); z-index:5;">
+
+        <img id="jumpscare" src="textures/jumpscares/freddy/489.png" alt="Jumpscare">
+
+        <div id="powerUsage">
+            <img id="powerUsageImg" src="textures/power/usage.png" alt="Power Usage">
+        </div>
+
+        <div id="timeDisplayContainer">
+            <img id="timeImg" src="textures/time/350.png" alt="Time">
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="client.js"></script>
+    <script src="script.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,298 @@
+body {
+    background-color: black;
+    margin: 0;
+    overflow: hidden;
+    color: white;
+    font-family: 'Courier New', Courier, monospace;
+    user-select: none;
+}
+
+#gameWindow {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    height: 100vh;
+    max-width: 100vw;
+    margin: auto;
+    overflow: hidden;
+    background-color: #111;
+}
+
+#office {
+    position: absolute;
+    height: 100%;
+    width: 150%;
+    left: -25%;
+    background-image: url('textures/office/default.png');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-color: #111;
+    transition: background-image 0.2s;
+    will-change: left;
+}
+
+.door {
+    position: absolute;
+    width: 15%;
+    height: 80%;
+    top: 10%;
+    background-color: #555;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    transition: transform 0.15s;
+    transform: translateY(-100%);
+}
+
+#leftDoor {
+    left: 5%;
+    background-image: url('textures/doors/left/100.png');
+}
+
+#rightDoor {
+    right: 5%;
+    background-image: url('textures/doors/right/104.png');
+}
+
+.button-panel {
+    position: fixed;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 100;
+}
+
+#leftButtons {
+    left: 2%;
+}
+
+#rightButtons {
+    right: 2%;
+}
+
+.panel-button {
+    width: 80px;
+    height: 160px;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    background-color: transparent;
+    image-rendering: pixelated;
+    background-image: url('textures/doors/left/buttons/off all.png');
+}
+
+#toggleRight {
+    background-image: url('textures/doors/right/buttons/off all.png');
+}
+
+.panel-button.door-only {
+    background-image: url('textures/doors/left/buttons/door on.png');
+}
+
+#toggleRight.door-only {
+    background-image: url('textures/doors/right/buttons/door on.png');
+}
+
+.panel-button.light-only {
+    background-image: url('textures/doors/left/buttons/light on.png');
+}
+
+#toggleRight.light-only {
+    background-image: url('textures/doors/right/buttons/light on.png');
+}
+
+.panel-button.both-on {
+    background-image: url('textures/doors/left/buttons/on all.png');
+}
+
+#toggleRight.both-on {
+    background-image: url('textures/doors/right/buttons/on all.png');
+}
+
+#ui-info {
+    position: absolute;
+    top: 5%;
+    left: 5%;
+    font-size: 1.2rem;
+    z-index: 10;
+    display: none;
+}
+
+#timeDisplay {
+    position: absolute;
+    top: 0%;
+    left: 80vw;
+    z-index: 10;
+    display: none;
+}
+
+#powerUsage {
+    position: absolute;
+    top: 5%;
+    left: 5%;
+    z-index: 10;
+}
+
+#powerUsage img {
+    height: 40px;
+    width: auto;
+    image-rendering: pixelated;
+}
+
+#timeDisplayContainer {
+    position: absolute;
+    top: 2%;
+    right: 5%;
+    z-index: 10;
+}
+
+#timeImg {
+    height: 50px;
+    width: auto;
+    image-rendering: pixelated;
+}
+
+#cameraContainer {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 300px;
+    height: 40px;
+    z-index: 100;
+}
+
+#cameraDropdown {
+    width: 100%;
+    height: 100%;
+    background-image: url('textures/office/misc/camera drop down.png');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    cursor: pointer;
+}
+
+#cameraSystem {
+    position: fixed;
+    bottom: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100vw;
+    height: 80vh;
+    background-color: rgba(0, 0, 0, 0.9);
+    background-image: url('textures/camera/431.png');
+    background-size: cover;
+    background-position: center;
+    display: none;
+    justify-content: center;
+    align-items: center;
+    border: 5px solid white;
+    box-sizing: border-box;
+    overflow: hidden;
+    z-index: 99;
+}
+
+#cameraAnimation {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    object-fit: contain;
+    background: rgba(0, 0, 0, 0.9);
+    z-index: 200;
+    display: none;
+}
+
+.camera-content {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#cameraFeed {
+    max-width: 90%;
+    max-height: 80%;
+    object-fit: contain;
+    image-rendering: pixelated;
+}
+
+.camera-label {
+    position: absolute;
+    top: 10%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.7);
+    padding: 5px 15px;
+    border: 2px solid white;
+    image-rendering: pixelated;
+}
+
+.camera-label img {
+    height: 30px;
+    width: auto;
+    display: block;
+}
+
+.red-dot {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    width: 15px;
+    height: 15px;
+    background-image: url('textures/camera/cam assets/red dot.png');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    animation: blink 1s infinite;
+}
+
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+.static-effect {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #0f0;
+    font-family: monospace;
+    font-size: 1.5rem;
+    text-shadow: 0 0 10px #0f0;
+    z-index: 5;
+    pointer-events: none;
+    animation: staticFlicker 0.15s infinite;
+}
+
+@keyframes staticFlicker {
+    0% { opacity: 0.8; }
+    50% { opacity: 1; }
+    100% { opacity: 0.9; }
+}
+
+#characterPortrait {
+    position: absolute;
+    bottom: 0;
+    right: 5%;
+    height: 90%;
+    display: none;
+    z-index: 3;
+}
+
+#jumpscare {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: none;
+    z-index: 20;
+}
