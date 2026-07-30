@@ -42,6 +42,7 @@ function handleButtonClick(e, side) {
   const clickY = e.clientY - rect.top;
   const halfHeight = rect.height / 2;
 
+  // Top half = door, bottom half = light
   if (clickY < halfHeight) {
     sendAction('toggleDoor', side);
     playSound('doorClick');
@@ -51,20 +52,26 @@ function handleButtonClick(e, side) {
   }
 }
 
-document.getElementById('toggleLeft').addEventListener('mousedown', (e) => {
-  e.preventDefault();
-  handleButtonClick(e, 'left');
-});
+const leftButton = document.getElementById('toggleLeft');
+const rightButton = document.getElementById('toggleRight');
 
-document.getElementById('toggleRight').addEventListener('mousedown', (e) => {
-  e.preventDefault();
-  handleButtonClick(e, 'right');
-});
+function bindButton(button, side) {
+  if (!button) return;
+  const handler = (e) => {
+    e.preventDefault();
+    handleButtonClick(e, side);
+  };
+  button.addEventListener('mousedown', handler);
+  button.addEventListener('pointerdown', handler);
+}
+
+bindButton(leftButton, 'left');
+bindButton(rightButton, 'right');
 
 function joinGame(roomId, night = 1) {
   socket.emit('joinGame', { roomId, night });
 }
 
 window.addEventListener('load', () => {
-  joinGame('default', 1);
+  // joinGame is called from script.js main menu
 });

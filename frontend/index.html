@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FNAF Web Clone Template</title>
+    <title>FNAF Web Clone</title>
     <link rel="stylesheet" href="style.css">
 </head>
 
@@ -13,39 +13,87 @@
         <div id="office">
             <div id="leftDoor" class="door"></div>
             <div id="rightDoor" class="door"></div>
-        </div>
 
-        <div id="leftButtons" class="button-panel">
-            <button id="toggleLeft" type="button" class="panel-button"></button>
-        </div>
-        <div id="rightButtons" class="button-panel">
-            <button id="toggleRight" type="button" class="panel-button"></button>
+            <div id="leftButtons" class="button-panel">
+                <button id="toggleLeft" type="button" class="panel-button"></button>
+            </div>
+            <div id="rightButtons" class="button-panel">
+                <button id="toggleRight" type="button" class="panel-button"></button>
+            </div>
         </div>
 
         <div id="cameraContainer">
-            <div id="cameraSystem">
-                <div class="static-effect">CAMERA SYSTEM ACTIVE</div>
-                <div class="camera-content">
-                    <img id="cameraFeed" src="textures/camera/office cam/46.png" alt="Camera Feed">
-                    <div class="camera-label">
-                        <img id="cameraNameLabel" src="textures/camera/camera names/70.png" alt="Camera Name">
-                    </div>
-                    <div class="red-dot"></div>
-                </div>
-            </div>
             <div id="cameraDropdown"></div>
         </div>
 
-        <img id="cameraAnimation" src="" alt="Camera Animation" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; object-fit:contain; background:rgba(0,0,0,0.9); z-index:5;">
+        <div id="cameraOverlay" style="display:none;">
+            <img id="cameraFeed" src="" alt="Camera Feed" style="display:none;">
+            <div class="red-dot"></div>
+            <div class="camera-map">
+                <img id="camMapBg" src="textures/camera/cam assets/cam map.png" alt="Cam Map">
+                <img id="mapBorder" class="map-border" src="textures/camera/cam assets/map border.png" alt="Map Border">
+                <img id="onClickBorder" class="on-click-border" src="textures/camera/cam assets/on click map border.png" alt="Selected">
+                <div class="camera-position" data-cam="1A" style="left:25%; top:30%;">1A</div>
+                <div class="camera-position" data-cam="1B" style="left:35%; top:30%;">1B</div>
+                <div class="camera-position" data-cam="1C" style="left:45%; top:30%;">1C</div>
+                <div class="camera-position" data-cam="2A" style="left:25%; top:50%;">2A</div>
+                <div class="camera-position" data-cam="2B" style="left:35%; top:50%;">2B</div>
+                <div class="camera-position" data-cam="3" style="left:55%; top:40%;">3</div>
+                <div class="camera-position" data-cam="4A" style="left:25%; top:70%;">4A</div>
+                <div class="camera-position" data-cam="4B" style="left:35%; top:70%;">4B</div>
+                <div class="camera-position" data-cam="5" style="left:55%; top:60%;">5</div>
+                <div class="camera-position" data-cam="6" style="left:75%; top:30%;">6</div>
+                <div class="camera-position" data-cam="7" style="left:75%; top:60%;">7</div>
+            </div>
+        </div>
 
-        <img id="jumpscare" src="textures/jumpscares/freddy/489.png" alt="Jumpscare">
+        <img id="cameraAnimation" src="" alt="Camera Animation" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; object-fit:contain; background:rgba(0,0,0,0.9); z-index:200;">
+
+        <img id="jumpscare" src="textures/jumpscares/freddy/489.png" alt="Jumpscare" style="display:none;">
 
         <div id="powerUsage">
-            <img id="powerUsageImg" src="textures/power/usage.png" alt="Power Usage">
+            <img id="powerUsageImg" src="textures/power/1 usage.png" alt="Power Usage">
+            <div id="powerDisplay" class="hud-text">100%</div>
+            <div id="usageDisplay" class="hud-text">1</div>
         </div>
 
         <div id="timeDisplayContainer">
             <img id="timeImg" src="textures/time/350.png" alt="Time">
+            <div id="timeDisplay" class="hud-text">12 AM</div>
+        </div>
+
+        <div id="mainMenu" style="display:none;">
+            <img id="menuBg" src="textures/main menu/431.png" alt="Menu Background">
+            <img id="menuTitle" src="textures/main menu/name.png" alt="FNAF">
+            <div class="menu-buttons">
+                <button id="btnNewGame" class="menu-btn">
+                    <img src="textures/main menu/new start.png" alt="New Game">
+                </button>
+                <button id="btnNight1" class="menu-btn">
+                    <img src="textures/main menu/12am 1 night.png" alt="Night 1">
+                </button>
+                <button id="btnNight2" class="menu-btn">
+                    <img src="textures/main menu/12 am 2 night.png" alt="Night 2">
+                </button>
+                <button id="btnNight3" class="menu-btn">
+                    <img src="textures/main menu/12am 3 night.png" alt="Night 3">
+                </button>
+                <button id="btnNight4" class="menu-btn">
+                    <img src="textures/main menu/12am 4 night.png" alt="Night 4">
+                </button>
+                <button id="btnNight5" class="menu-btn">
+                    <img src="textures/main menu/12 am 5 night.png" alt="Night 5">
+                </button>
+                <button id="btnNight6" class="menu-btn">
+                    <img src="textures/main menu/12am 6 night.png" alt="Night 6">
+                </button>
+                <button id="btnNight7" class="menu-btn">
+                    <img src="textures/main menu/12am 7 night.png" alt="Night 7">
+                </button>
+                <button id="btnCustomNight" class="menu-btn">
+                    <img src="textures/main menu/custom night menu.png" alt="Custom Night">
+                </button>
+            </div>
         </div>
     </div>
 

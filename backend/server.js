@@ -260,6 +260,26 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(3000, () => {
-  console.log('FNAF Backend running on http://localhost:3000');
-});
+function startServer(port) {
+  const chosenPort = port ?? (process.env.PORT ? Number(process.env.PORT) : 0);
+
+  server.listen(chosenPort, () => {
+    const address = server.address();
+    const actualPort = typeof address === 'object' && address ? address.port : chosenPort;
+    console.log(`FNAF Backend running on http://localhost:${actualPort}`);
+  });
+
+  server.once('error', (err) => {
+    if (err.code === 'EADDRINUSE' && !process.env.PORT) {
+      console.warn(`Port ${chosenPort} is busy. Trying an available port instead.`);
+      server.close(() => {
+        startServer(0);
+      });
+    } else {
+      console.error(err);
+      process.exit(1);
+    }
+  });
+}
+
+startServer();
