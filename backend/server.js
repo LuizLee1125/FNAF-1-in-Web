@@ -20,7 +20,37 @@ const MOVEMENT_CONFIG = {
   freddy: { threshold: 3, cameraStall: true },
   bonnie: { threshold: 5, cameraStall: false },
   chica: { threshold: 5, cameraStall: false },
-  foxy: { threshold: 5, cameraStall: true }
+  foxy: { threshold: 5, cameraStall: true } // Foxy is stalled if any camera is up
+};
+
+// FNAF 1 Accurate Room Graph
+const MOVEMENT_GRAPH = {
+  freddy: {
+    '1A': ['1B'],
+    '1B': ['7'],
+    '7': ['6'],
+    '6': ['4A'],
+    '4A': ['4B'],
+    '4B': ['attack']
+  },
+  bonnie: {
+    '1A': ['1B', '5'],
+    '1B': ['5', '2A'],
+    '5': ['1B', '2A'],
+    '2A': ['3', '2B'],
+    '3': ['2A', '2B'],
+    '2B': ['office_door_left', '2A'],
+    'office_door_left': ['attack', '1B'] // 1B if retreated
+  },
+  chica: {
+    '1A': ['1B', '7'],
+    '1B': ['7', '4A'],
+    '7': ['4A', '6'],
+    '6': ['4A'],
+    '4A': ['4B'],
+    '4B': ['office_door_right', '4A'],
+    'office_door_right': ['attack', '1B'] // 1B if retreated
+  }
 };
 
 const AI_SCHEDULES = {
@@ -57,10 +87,10 @@ function createRoom(roomId, night) {
     lights: { left: false, right: false },
     cameraUp: false,
     animatronics: {
-      freddy: { location: 'stage', ai: 0, movementTimer: 0 },
-      bonnie: { location: 'stage', ai: 0, movementTimer: 0 },
-      chica: { location: 'stage', ai: 0, movementTimer: 0 },
-      foxy: { location: 'cove', ai: 0, movementTimer: 0, foxyStage: 0 }
+      freddy: { location: '1A', ai: 0, movementTimer: 0 },
+      bonnie: { location: '1A', ai: 0, movementTimer: 0 },
+      chica: { location: '1A', ai: 0, movementTimer: 0 },
+      foxy: { location: '1C', ai: 0, movementTimer: 0, foxyStage: 0 }
     }
   };
 }
@@ -85,50 +115,59 @@ function attemptMove(room, name) {
   const roll = Math.floor(Math.random() * 20) + 1;
   if (roll > state.ai) return;
 
-  switch (name) {
-    case 'freddy':
-      if (state.location === 'stage') state.location = 'showStage';
-      else if (state.location === 'showStage') state.location = 'dining';
-      else if (state.location === 'dining') state.location = 'hall';
-      else if (state.location === 'hall') {
-        if (!room.doors.right) {
-          room.state = 'gameover';
-          io.to(room.id).emit('gameOver', { reason: 'freddy' });
-        }
+  // Foxy has unique stage mechanics
+  if (name === 'foxy') {
+    if (state.location === '1C') {
+      state.foxyStage++;
+      if (state.foxyStage > 3) {
+        state.location = '2A'; // Running down the hall
       }
-      break;
-    case 'bonnie':
-      if (state.location === 'stage') state.location = 'showStage';
-      else if (state.location === 'showStage') state.location = 'dining';
-      else if (state.location === 'dining') state.location = 'leftHall';
-      else if (state.location === 'leftHall') {
-        if (!room.doors.left) {
-          room.state = 'gameover';
-          io.to(room.id).emit('gameOver', { reason: 'bonnie' });
-        }
+    } else if (state.location === '2A') {
+      if (!room.doors.left) {
+        room.state = 'gameover';
+        io.to(room.id).emit('gameOver', { reason: 'foxy' });
+      } else {
+        state.location = '1C'; // Retreat and reset
+        state.foxyStage = 0;
+        room.power = Math.max(0, room.power - 5); // Foxy drains power upon hitting door
       }
-      break;
-    case 'chica':
-      if (state.location === 'stage') state.location = 'showStage';
-      else if (state.location === 'showStage') state.location = 'dining';
-      else if (state.location === 'dining') state.location = 'rightHall';
-      else if (state.location === 'rightHall') {
-        if (!room.doors.right) {
-          room.state = 'gameover';
-          io.to(room.id).emit('gameOver', { reason: 'chica' });
-        }
-      }
-      break;
-    case 'foxy':
-      if (state.location === 'cove') {
-        state.foxyStage = Math.min(3, state.foxyStage + 1);
-      } else if (state.location === 'hall') {
-        if (!room.doors.left) {
-          room.state = 'gameover';
-          io.to(room.id).emit('gameOver', { reason: 'foxy' });
-        }
-      }
-      break;
+    }
+    return;
+  }
+
+  // Handle direct attacks
+  if (name === 'freddy' && state.location === '4B') {
+    if (!room.doors.right) {
+      room.state = 'gameover'; io.to(room.id).emit('gameOver', { reason: 'freddy' });
+    } else {
+      state.location = '4A';
+    }
+    return;
+  }
+  
+  if (name === 'bonnie' && state.location === 'office_door_left') {
+    if (!room.doors.left) {
+      room.state = 'gameover'; io.to(room.id).emit('gameOver', { reason: 'bonnie' });
+    } else {
+      state.location = '1B'; // Reset on door hit
+    }
+    return;
+  }
+  
+  if (name === 'chica' && state.location === 'office_door_right') {
+    if (!room.doors.right) {
+      room.state = 'gameover'; io.to(room.id).emit('gameOver', { reason: 'chica' });
+    } else {
+      state.location = '1B'; // Reset on door hit
+    }
+    return;
+  }
+
+  // General movement across the camera graph
+  const paths = MOVEMENT_GRAPH[name];
+  if (paths && paths[state.location]) {
+    const possibleMoves = paths[state.location];
+    state.location = possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
   }
 }
 
@@ -208,11 +247,20 @@ io.on('connection', (socket) => {
   socket.on('joinGame', (data) => {
     const { roomId, night = 1 } = data;
     let room = rooms.get(roomId);
-    if (!room) {
+
+    if (!room || room.state === 'gameover' || room.state === 'won') {
+      stopRoomLoop(roomId);
       room = createRoom(roomId, night);
       rooms.set(roomId, room);
+    } else {
+      if (room.state === 'waiting') {
+        room.night = night;
+      }
     }
-    room.players.push(socket.id);
+
+    if (!room.players.includes(socket.id)) {
+      room.players.push(socket.id);
+    }
     socket.join(roomId);
     socket.roomId = roomId;
 
@@ -244,7 +292,27 @@ io.on('connection', (socket) => {
       room.lights[action.side] = !room.lights[action.side];
     } else if (action.type === 'toggleCamera') {
       room.cameraUp = !room.cameraUp;
+    } else if (action.type === 'setCamera') {
+      room.cameraUp = !!action.value;
     }
+
+    let usage = 1;
+    if (room.doors.left) usage++;
+    if (room.doors.right) usage++;
+    if (room.lights.left) usage++;
+    if (room.lights.right) usage++;
+    if (room.cameraUp) usage++;
+    room.usage = usage;
+
+    io.to(socket.roomId).emit('stateUpdate', {
+      hour: room.hour,
+      power: Math.floor(room.power),
+      usage: room.usage,
+      animatronics: room.animatronics,
+      doors: room.doors,
+      lights: room.lights,
+      cameraUp: room.cameraUp
+    });
   });
 
   socket.on('disconnect', () => {
@@ -260,26 +328,6 @@ io.on('connection', (socket) => {
   });
 });
 
-function startServer(port) {
-  const chosenPort = port ?? (process.env.PORT ? Number(process.env.PORT) : 0);
-
-  server.listen(chosenPort, () => {
-    const address = server.address();
-    const actualPort = typeof address === 'object' && address ? address.port : chosenPort;
-    console.log(`FNAF Backend running on http://localhost:${actualPort}`);
-  });
-
-  server.once('error', (err) => {
-    if (err.code === 'EADDRINUSE' && !process.env.PORT) {
-      console.warn(`Port ${chosenPort} is busy. Trying an available port instead.`);
-      server.close(() => {
-        startServer(0);
-      });
-    } else {
-      console.error(err);
-      process.exit(1);
-    }
-  });
-}
-
-startServer();
+server.listen(3000, () => {
+  console.log('FNAF Backend running on http://localhost:3000');
+});

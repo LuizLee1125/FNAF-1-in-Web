@@ -3,6 +3,7 @@
 const socket = io();
 
 let gameActive = false;
+let lightState = { left: false, right: false };
 
 socket.on('connect', () => {
   console.log('Connected to FNAF Backend');
@@ -10,6 +11,10 @@ socket.on('connect', () => {
 
 socket.on('stateUpdate', (state) => {
   gameActive = true;
+  if (state && state.lights) {
+    lightState.left = state.lights.left;
+    lightState.right = state.lights.right;
+  }
   if (typeof onServerState === 'function') {
     onServerState(state);
   }
@@ -22,6 +27,9 @@ socket.on('gameEnd', (data) => {
   } else if (data.result === 'powerOut') {
     alert('Power Outage!');
   }
+  if (typeof returnToMainMenu === 'function') {
+    returnToMainMenu();
+  }
 });
 
 socket.on('gameOver', (data) => {
@@ -31,9 +39,9 @@ socket.on('gameOver', (data) => {
   }
 });
 
-function sendAction(type, side) {
+function sendAction(type, side, value) {
   if (!gameActive) return;
-  socket.emit('playerAction', { type, side });
+  socket.emit('playerAction', { type, side, value });
 }
 
 function handleButtonClick(e, side) {
@@ -47,8 +55,14 @@ function handleButtonClick(e, side) {
     sendAction('toggleDoor', side);
     playSound('doorClick');
   } else {
+    const wasOn = lightState[side];
     sendAction('toggleLight', side);
-    playSound('lightClick');
+    if (!wasOn) {
+      playSound('lightClick');
+    } else {
+      stopSound('lightClick');
+    }
+    lightState[side] = !wasOn;
   }
 }
 
@@ -69,6 +83,7 @@ bindButton(leftButton, 'left');
 bindButton(rightButton, 'right');
 
 function joinGame(roomId, night = 1) {
+  gameActive = false;
   socket.emit('joinGame', { roomId, night });
 }
 
