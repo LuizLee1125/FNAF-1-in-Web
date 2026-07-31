@@ -28,7 +28,7 @@ socket.on('gameEnd', (data) => {
     alert('Power Outage!');
   }
   if (typeof returnToMainMenu === 'function') {
-    returnToMainMenu();
+    returnToMainMenu(data.result === 'win');
   }
 });
 
@@ -82,9 +82,9 @@ function bindButton(button, side) {
 bindButton(leftButton, 'left');
 bindButton(rightButton, 'right');
 
-function joinGame(roomId, night = 1) {
+function joinGame(roomId, night = 1, customAI = null) {
   gameActive = false;
-  socket.emit('joinGame', { roomId, night });
+  socket.emit('joinGame', { roomId, night, customAI });
 }
 
 window.addEventListener('load', () => {

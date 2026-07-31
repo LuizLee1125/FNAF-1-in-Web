@@ -32,12 +32,15 @@
 
         <div id="cameraOverlay" style="display:none;">
             <img id="cameraFeed" src="" alt="Camera Feed" style="display:none;">
+            <img id="camGlitch" src="" alt="" style="display:none;">
+            <img id="camBorder" src="textures/camera/cam assets/cam border.png" alt="Cam Border">
             <div class="red-dot"></div>
+
             <div class="camera-map">
+                <img id="camNameImg" src="textures/camera/camera names/1A.png" alt="Camera Name">
                 <img id="camMapBg" src="textures/camera/cam assets/cam map.png" alt="Cam Map">
-                <img id="onClickBorder" class="on-click-border" src="textures/camera/cam assets/on click map border.png" alt="Selected">
                 
-                <div class="camera-position" data-cam="1A" style="left:46%; top:6%;">
+                <div class="camera-position active" data-cam="1A" style="left:46%; top:6%;">
                     <img src="textures/camera/cam assets/1a.png" alt="1A">
                 </div>
                 <div class="camera-position" data-cam="1B" style="left:42%; top:22%;">
@@ -73,6 +76,14 @@
             </div>
         </div>
 
+        <div id="newStartScreen" style="display:none;">
+            <img id="newStartImg" src="textures/main menu/new start.png" alt="Help Wanted - New Start">
+        </div>
+
+        <div id="nightIntroScreen" style="display:none;">
+            <img id="nightIntroImg" src="" alt="12 AM Night">
+        </div>
+
         <img id="cameraAnimation" src="" alt="Camera Animation" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; object-fit:contain; background:rgba(0,0,0,0.9); z-index:200;">
 
         <img id="jumpscare" src="textures/jumpscares/freddy/489.png" alt="Jumpscare" style="display:none;">
@@ -90,22 +101,82 @@
             <div id="nightDisplay" class="hud-text" style="font-size: 20px; text-align: right;">Night 1</div>
         </div>
 
+        <div id="newStartScreen" style="display:none;">
+            <img id="newStartImg" src="textures/main menu/new start.png" alt="Help Wanted - New Start">
+        </div>
+
         <div id="mainMenu" style="display:none;">
             <img id="menuBg" src="textures/main menu/431.png" alt="Menu Background">
             <img id="menuTitle" src="textures/main menu/name.png" alt="FNAF">
+            <div id="starsContainer"></div>
+            
+            <img id="selectorArrow" src="textures/main menu/hover.png" alt=">>">
+
             <div class="menu-buttons">
-                <button id="btnNewGame" class="menu-btn">New Game</button>
-                <button id="btnNight1" class="menu-btn">Night 1</button>
-                <button id="btnNight2" class="menu-btn">Night 2</button>
-                <button id="btnNight3" class="menu-btn">Night 3</button>
-                <button id="btnNight4" class="menu-btn">Night 4</button>
-                <button id="btnNight5" class="menu-btn">Night 5</button>
-                <button id="btnNight6" class="menu-btn">Night 6</button>
-                <button id="btnNight7" class="menu-btn">Night 7</button>
-                <button id="btnCustomNight" class="menu-btn">Custom Night</button>
+                <div id="btnNewGame" class="menu-item">
+                    <span>New Game</span>
+                </div>
+                <div id="btnContinue" class="menu-item">
+                    <span>Continue</span>
+                    <div id="continueSubhead" class="menu-subhead">Night 1</div>
+                </div>
+                <div id="btnNight6" class="menu-item" style="display: none;">
+                    <span>6th Night</span>
+                </div>
+                <div id="btnCustomNight" class="menu-item" style="display: none;">
+                    <span>Custom Night</span>
+                </div>
             </div>
             <div id="versionText">v 1.13</div>
             <div id="copyrightText">©2014 Scott Cawthon</div>
+        </div>
+
+        <div id="customNightScreen" style="display: none;">
+            <div class="custom-header">
+                <img src="textures/customnight/ai level.png" alt="A.I. LEVEL" class="custom-title-img">
+            </div>
+            <div class="custom-animatronics">
+                <div class="anim-card">
+                    <img src="textures/customnight/freddy.icon.png" alt="Freddy" class="anim-icon">
+                    <img src="textures/customnight/freddy.name.png" alt="Freddy" class="anim-name">
+                    <div class="ai-controls">
+                        <button class="ai-btn" id="freddyMinus">&lt;</button>
+                        <span class="ai-val" id="customAiFreddy">20</span>
+                        <button class="ai-btn" id="freddyPlus">&gt;</button>
+                    </div>
+                </div>
+                <div class="anim-card">
+                    <img src="textures/customnight/bonnie.icon.png" alt="Bonnie" class="anim-icon">
+                    <img src="textures/customnight/bonnie.name.png" alt="Bonnie" class="anim-name">
+                    <div class="ai-controls">
+                        <button class="ai-btn" id="bonnieMinus">&lt;</button>
+                        <span class="ai-val" id="customAiBonnie">20</span>
+                        <button class="ai-btn" id="bonniePlus">&gt;</button>
+                    </div>
+                </div>
+                <div class="anim-card">
+                    <img src="textures/customnight/chica.icon.png" alt="Chica" class="anim-icon">
+                    <img src="textures/customnight/chica.name.png" alt="Chica" class="anim-name">
+                    <div class="ai-controls">
+                        <button class="ai-btn" id="chicaMinus">&lt;</button>
+                        <span class="ai-val" id="customAiChica">20</span>
+                        <button class="ai-btn" id="chicaPlus">&gt;</button>
+                    </div>
+                </div>
+                <div class="anim-card">
+                    <img src="textures/customnight/foxy.icon.png" alt="Foxy" class="anim-icon">
+                    <img src="textures/customnight/foxy.name.png" alt="Foxy" class="anim-name">
+                    <div class="ai-controls">
+                        <button class="ai-btn" id="foxyMinus">&lt;</button>
+                        <span class="ai-val" id="customAiFoxy">20</span>
+                        <button class="ai-btn" id="foxyPlus">&gt;</button>
+                    </div>
+                </div>
+            </div>
+            <div class="custom-actions">
+                <img id="btnStartCustom" src="textures/customnight/ready.png" alt="READY" class="btn-ready-img">
+                <div id="btnBackCustom" class="custom-back-btn">BACK</div>
+            </div>
         </div>
     </div>
 

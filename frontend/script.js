@@ -5,10 +5,10 @@ const cameraFeed = document.getElementById('cameraFeed');
 const cameraAnimation = document.getElementById('cameraAnimation');
 const cameraContainer = document.getElementById('cameraContainer');
 const powerUsageImg = document.getElementById('powerUsageImg');
-const onClickBorder = document.getElementById('onClickBorder');
 const mainMenu = document.getElementById('mainMenu');
 const menuBg = document.getElementById('menuBg');
 const menuTitle = document.getElementById('menuTitle');
+const camNameTag = document.getElementById('camNameTag');
 
 // UI Elements
 const timeDisplay = document.getElementById('timeDisplay');
@@ -25,6 +25,67 @@ let currentNight = 1;
 let currentRoomId = null;
 let currentState = null;
 
+// CCTV pan variables
+let cctvState = 'MOVING'; // 'MOVING' or 'WAITING'
+let cctvStartTime = Date.now();
+let cctvStartPan = -3;
+let cctvTargetPan = 3;
+let cctvPanX = -3;
+const CCTV_PAN_RANGE = 3; // -3% to +3%
+const CCTV_MOVE_DURATION = 2200; // 2.2 seconds (slightly faster slide)
+const CCTV_WAIT_DURATION = 2000; // 2 seconds
+
+function updateCctvPan() {
+    if (!isCameraUp) {
+        cctvState = 'MOVING';
+        cctvStartTime = Date.now();
+        cctvStartPan = -CCTV_PAN_RANGE;
+        cctvTargetPan = CCTV_PAN_RANGE;
+        cctvPanX = cctvStartPan;
+        return;
+    }
+
+    const now = Date.now();
+    const elapsed = now - cctvStartTime;
+
+    if (cctvState === 'MOVING') {
+        const progress = Math.min(1, elapsed / CCTV_MOVE_DURATION);
+        const easeProgress = 0.5 - Math.cos(progress * Math.PI) / 2;
+        cctvPanX = cctvStartPan + (cctvTargetPan - cctvStartPan) * easeProgress;
+
+        if (progress >= 1) {
+            cctvState = 'WAITING';
+            cctvStartTime = Date.now();
+            cctvPanX = cctvTargetPan;
+        }
+    } else if (cctvState === 'WAITING') {
+        cctvPanX = cctvTargetPan;
+        if (elapsed >= CCTV_WAIT_DURATION) {
+            cctvState = 'MOVING';
+            cctvStartTime = Date.now();
+            cctvStartPan = cctvTargetPan;
+            cctvTargetPan = -cctvTargetPan;
+        }
+    }
+
+    cameraFeed.style.transform = `translateX(${cctvPanX}%)`;
+}
+
+// Camera name lookup
+const CAMERA_NAMES = {
+    '1A': 'Show Stage',
+    '1B': 'Dining Area',
+    '1C': 'Pirate Cove',
+    '2A': 'West Hall',
+    '2B': 'W. Hall Corner',
+    '3': 'Supply Closet',
+    '4A': 'East Hall',
+    '4B': 'E. Hall Corner',
+    '5': 'Backstage',
+    '6': 'Kitchen',
+    '7': 'Restrooms'
+};
+
 // Tracking animatronic positions to regenerate a/b randomized variants
 let previousLocations = {};
 let animatronicVariants = {
@@ -38,6 +99,10 @@ let animatronicVariants = {
 // Audio Manager
 const audioSources = {
     static: 'audio/garble1.wav',
+    garble1: 'audio/garble1.wav',
+    garble2: 'audio/garble2.wav',
+    garble3: 'audio/garble3.wav',
+    windowscare: 'audio/windowscare.wav',
     powerdown: 'audio/powerdown.wav',
     jumpscare: 'audio/XSCREAM.wav',
     doorClick: 'audio/SFXBible_12478.wav',
@@ -152,15 +217,51 @@ function updateDoorTexture(doorEl, side, isOpen) {
     doorEl.style.backgroundImage = `url('${isOpen ? openTexture : closedTexture}')`;
 }
 
-function updateDoorTextureAnimated(doorEl, side, isOpen) {
+function updateDoorTextureAnimated(doorEl, side, isClosed) {
     if (!doorEl) return;
-    const leftFrames = ['textures/doors/left/100.png','textures/doors/left/99.png','textures/doors/left/98.png','textures/doors/left/97.png','textures/doors/left/96.png','textures/doors/left/95.png','textures/doors/left/94.png','textures/doors/left/93.png','textures/doors/left/92.png','textures/doors/left/91.png','textures/doors/left/90.png','textures/doors/left/89.png','textures/doors/left/88.png','textures/doors/left/87.png','textures/doors/left/86.png','textures/doors/left/101.png','textures/doors/left/102.png'];
-    const rightFrames = ['textures/doors/right/104.png','textures/doors/right/103.png','textures/doors/right/105.png','textures/doors/right/106.png','textures/doors/right/107.png','textures/doors/right/108.png','textures/doors/right/109.png','textures/doors/right/110.png','textures/doors/right/111.png','textures/doors/right/112.png','textures/doors/right/113.png','textures/doors/right/114.png','textures/doors/right/115.png','textures/doors/right/116.png','textures/doors/right/117.png','textures/doors/right/118.png'];
-    const frames = isOpen ? (side === 'left' ? leftFrames : rightFrames) : (side === 'left' ? [...leftFrames].reverse() : [...rightFrames].reverse());
+    const leftClosingFrames = [
+        'textures/doors/left/86.png',
+        'textures/doors/left/87.png',
+        'textures/doors/left/88.png',
+        'textures/doors/left/89.png',
+        'textures/doors/left/91.png',
+        'textures/doors/left/92.png',
+        'textures/doors/left/93.png',
+        'textures/doors/left/94.png',
+        'textures/doors/left/95.png',
+        'textures/doors/left/96.png',
+        'textures/doors/left/97.png',
+        'textures/doors/left/98.png',
+        'textures/doors/left/99.png',
+        'textures/doors/left/100.png'
+    ];
+    const rightClosingFrames = [
+        'textures/doors/right/103.png',
+        'textures/doors/right/104.png',
+        'textures/doors/right/105.png',
+        'textures/doors/right/106.png',
+        'textures/doors/right/107.png',
+        'textures/doors/right/108.png',
+        'textures/doors/right/109.png',
+        'textures/doors/right/110.png',
+        'textures/doors/right/111.png',
+        'textures/doors/right/112.png',
+        'textures/doors/right/113.png',
+        'textures/doors/right/114.png',
+        'textures/doors/right/115.png',
+        'textures/doors/right/116.png',
+        'textures/doors/right/117.png',
+        'textures/doors/right/118.png'
+    ];
+
+    const closing = side === 'left' ? leftClosingFrames : rightClosingFrames;
+    const frames = isClosed ? closing : [...closing].reverse();
 
     if (doorEl._doorAnimInterval) {
         clearInterval(doorEl._doorAnimInterval);
     }
+
+    doorEl.style.display = 'block';
     let idx = 0;
     doorEl._doorAnimInterval = setInterval(() => {
         if (idx < frames.length) {
@@ -169,8 +270,11 @@ function updateDoorTextureAnimated(doorEl, side, isOpen) {
         } else {
             clearInterval(doorEl._doorAnimInterval);
             doorEl._doorAnimInterval = null;
+            if (!isClosed) {
+                doorEl.style.display = 'none';
+            }
         }
-    }, 20);
+    }, 16);
 }
 
 function updateCameraTexture(state) {
@@ -184,7 +288,7 @@ function updateCameraTexture(state) {
 
     const cam = selectedCamera;
     const a = state.animatronics;
-    let imgSrc = `${cam}.png`; // fallback empty
+    let imgSrc = `${cam}.png`;
 
     const fLoc = a.freddy.location;
     const bLoc = a.bonnie.location;
@@ -193,12 +297,23 @@ function updateCameraTexture(state) {
     const fxStage = a.foxy.foxyStage;
 
     if (cam === '1A') {
-        if (fLoc === '1A' && bLoc === '1A' && cLoc === '1A') imgSrc = '1A all.png';
-        else if (fLoc === '1A' && cLoc === '1A') imgSrc = '1A chica.png'; // Bonnie left
-        else if (fLoc === '1A' && bLoc === '1A') imgSrc = '1A bonnie.png'; // Chica left
-        else if (bLoc === '1A' && cLoc === '1A') imgSrc = '1A bonnie_chica.png'; 
-        else if (fLoc === '1A') imgSrc = '1A.png'; 
-        else imgSrc = '1A.png';
+        const fAt1A = fLoc === '1A';
+        const bAt1A = bLoc === '1A';
+        const cAt1A = cLoc === '1A';
+
+        if (fAt1A && bAt1A && cAt1A) {
+            imgSrc = '1A.png'; // Default when no animatronics leave stage
+        } else if (fAt1A && cAt1A && !bAt1A) {
+            imgSrc = '1A chica.png'; // Only Bonnie leaves
+        } else if (fAt1A && bAt1A && !cAt1A) {
+            imgSrc = '1A bonnie.png'; // Only Chica leaves
+        } else if (fAt1A && !bAt1A && !cAt1A) {
+            imgSrc = '1A bonnie_chica.png'; // Both Bonnie and Chica leave
+        } else if (!fAt1A && !bAt1A && !cAt1A) {
+            imgSrc = '1A all.png'; // All three leave 1A
+        } else {
+            imgSrc = '1A.png';
+        }
     }
     else if (cam === '1B') {
         if (fLoc === '1B') imgSrc = '1B freddy.png';
@@ -256,20 +371,115 @@ function updateCameraTexture(state) {
     }
 }
 
-function updateJumpscare(reason) {
-    const jumpscare = document.getElementById('jumpscare');
-    let src = 'textures/jumpscares/freddy/489.png';
+const jumpscareFrames = {
+    bonnie: [
+        'textures/jumpscares/bonnie/291.png',
+        'textures/jumpscares/bonnie/293.png',
+        'textures/jumpscares/bonnie/294.png',
+        'textures/jumpscares/bonnie/295.png',
+        'textures/jumpscares/bonnie/296.png',
+        'textures/jumpscares/bonnie/297.png',
+        'textures/jumpscares/bonnie/298.png',
+        'textures/jumpscares/bonnie/299.png',
+        'textures/jumpscares/bonnie/300.png',
+        'textures/jumpscares/bonnie/301.png',
+        'textures/jumpscares/bonnie/303.png'
+    ],
+    chica: [
+        'textures/jumpscares/chica/216.png',
+        'textures/jumpscares/chica/228.png',
+        'textures/jumpscares/chica/229.png',
+        'textures/jumpscares/chica/230.png',
+        'textures/jumpscares/chica/231.png',
+        'textures/jumpscares/chica/232.png',
+        'textures/jumpscares/chica/233.png',
+        'textures/jumpscares/chica/234.png',
+        'textures/jumpscares/chica/235.png',
+        'textures/jumpscares/chica/236.png',
+        'textures/jumpscares/chica/237.png',
+        'textures/jumpscares/chica/239.png',
+        'textures/jumpscares/chica/279.png',
+        'textures/jumpscares/chica/281.png'
+    ],
+    foxy: [
+        'textures/jumpscares/foxy/242.png',
+        'textures/jumpscares/foxy/243.png',
+        'textures/jumpscares/foxy/396.png',
+        'textures/jumpscares/foxy/397.png',
+        'textures/jumpscares/foxy/398.png',
+        'textures/jumpscares/foxy/399.png',
+        'textures/jumpscares/foxy/400.png',
+        'textures/jumpscares/foxy/401.png',
+        'textures/jumpscares/foxy/402.png',
+        'textures/jumpscares/foxy/403.png',
+        'textures/jumpscares/foxy/404.png',
+        'textures/jumpscares/foxy/405.png',
+        'textures/jumpscares/foxy/406.png',
+        'textures/jumpscares/foxy/407.png',
+        'textures/jumpscares/foxy/408.png',
+        'textures/jumpscares/foxy/409.png',
+        'textures/jumpscares/foxy/410.png',
+        'textures/jumpscares/foxy/411.png',
+        'textures/jumpscares/foxy/412.png',
+        'textures/jumpscares/foxy/413.png',
+        'textures/jumpscares/foxy/415.png'
+    ],
+    freddy: [
+        'textures/jumpscares/freddy/489.png',
+        'textures/jumpscares/freddy/490.png',
+        'textures/jumpscares/freddy/491.png',
+        'textures/jumpscares/freddy/493.png',
+        'textures/jumpscares/freddy/495.png',
+        'textures/jumpscares/freddy/496.png',
+        'textures/jumpscares/freddy/497.png',
+        'textures/jumpscares/freddy/498.png',
+        'textures/jumpscares/freddy/499.png',
+        'textures/jumpscares/freddy/500.png',
+        'textures/jumpscares/freddy/501.png',
+        'textures/jumpscares/freddy/502.png',
+        'textures/jumpscares/freddy/503.png',
+        'textures/jumpscares/freddy/504.png',
+        'textures/jumpscares/freddy/505.png',
+        'textures/jumpscares/freddy/506.png',
+        'textures/jumpscares/freddy/507.png',
+        'textures/jumpscares/freddy/508.png',
+        'textures/jumpscares/freddy/509.png',
+        'textures/jumpscares/freddy/510.png',
+        'textures/jumpscares/freddy/511.png',
+        'textures/jumpscares/freddy/512.png',
+        'textures/jumpscares/freddy/513.png',
+        'textures/jumpscares/freddy/514.png',
+        'textures/jumpscares/freddy/515.png',
+        'textures/jumpscares/freddy/516.png',
+        'textures/jumpscares/freddy/517.png',
+        'textures/jumpscares/freddy/518.png'
+    ]
+};
 
-    switch (reason) {
-        case 'bonnie': src = 'textures/jumpscares/bonnie/291.png'; break;
-        case 'chica': src = 'textures/jumpscares/chica/216.png'; break;
-        case 'foxy': src = 'textures/jumpscares/foxy/242.png'; break;
-        case 'freddy':
-        default: src = 'textures/jumpscares/freddy/489.png'; break;
+let jumpscareAnimInterval = null;
+
+function triggerJumpscare(reason) {
+    const jumpscare = document.getElementById('jumpscare');
+    const anim = jumpscareFrames[reason] || jumpscareFrames.freddy;
+
+    if (jumpscareAnimInterval) {
+        clearInterval(jumpscareAnimInterval);
+        jumpscareAnimInterval = null;
     }
 
-    jumpscare.src = src;
+    playSound('jumpscare');
     jumpscare.style.display = 'block';
+
+    let frameIdx = 0;
+    jumpscareAnimInterval = setInterval(() => {
+        if (frameIdx < anim.length) {
+            jumpscare.src = anim[frameIdx];
+            frameIdx++;
+        } else {
+            clearInterval(jumpscareAnimInterval);
+            jumpscareAnimInterval = null;
+        }
+    }, 28);
 }
 
 function updateButtonState(side, door, light) {
@@ -312,30 +522,60 @@ function applyCameraBackground() {
     cameraOverlay.style.backgroundColor = '#000';
 }
 
+const camGlitch = document.getElementById('camGlitch');
+const glitchFrames = [
+    'textures/camera/glitch/6.png',
+    'textures/camera/glitch/8.png',
+    'textures/camera/glitch/9.png'
+];
+let glitchAnimInterval = null;
+
+function playCamGlitch() {
+    if (glitchAnimInterval) {
+        clearInterval(glitchAnimInterval);
+        glitchAnimInterval = null;
+    }
+
+    if (!camGlitch) return;
+
+    camGlitch.style.display = 'block';
+    let idx = 0;
+
+    glitchAnimInterval = setInterval(() => {
+        if (idx < glitchFrames.length) {
+            camGlitch.src = glitchFrames[idx];
+            idx++;
+        } else {
+            clearInterval(glitchAnimInterval);
+            glitchAnimInterval = null;
+            camGlitch.style.display = 'none';
+        }
+    }, 50);
+}
+
 function selectCamera(cam) {
     selectedCamera = cam;
-    
+
+    // Toggle active class on map buttons
+    document.querySelectorAll('.camera-position').forEach(btn => {
+        btn.classList.remove('active');
+    });
     const camEl = document.querySelector(`.camera-position[data-cam="${cam}"]`);
     if (camEl) {
-        const existingBorder = camEl.querySelector('.on-click-border');
-        if (existingBorder && existingBorder !== onClickBorder) {
-            existingBorder.remove();
-        }
-        const camIcon = camEl.querySelector('img:not(.on-click-border)');
-        if (camIcon && onClickBorder.parentNode !== camEl) {
-            camEl.insertBefore(onClickBorder, camIcon);
-        } else if (!camIcon && onClickBorder.parentNode !== camEl) {
-            camEl.appendChild(onClickBorder);
-        }
-        onClickBorder.style.display = 'block';
-        onClickBorder.style.left = '-4px';
-        onClickBorder.style.top = '-4px';
-        onClickBorder.style.width = 'calc(100% + 8px)';
-        onClickBorder.style.height = 'calc(100% + 8px)';
+        camEl.classList.add('active');
     }
-    
+
+    // Update camera name image on top of map
+    const camNameImg = document.getElementById('camNameImg');
+    if (camNameImg) {
+        camNameImg.src = `textures/camera/camera names/${cam}.png`;
+    }
+
+    // Play glitch animation on camera switch
+    playCamGlitch();
+
     applyCameraBackground();
-    
+
     if (isCameraUp && currentState) {
         updateCameraTexture(currentState);
     }
@@ -349,7 +589,8 @@ let cameraCloseTimeout = null;
 let mouseInOverlay = false;
 
 function openCamera() {
-    if (cameraHovered) return;
+    if (cameraAnimating || isCameraUp) return;
+    isCameraUp = true;
     cameraHovered = true;
 
     if (cameraCloseTimeout) {
@@ -357,14 +598,17 @@ function openCamera() {
         cameraCloseTimeout = null;
     }
 
-    if (cameraAnimating) return;
+    if (cameraAnimInterval) {
+        clearInterval(cameraAnimInterval);
+        cameraAnimInterval = null;
+    }
+
     cameraAnimating = true;
     cameraAnimFrame = 0;
 
     cameraAnimation.style.display = 'block';
-    cameraOverlay.style.display = 'block';
+    cameraOverlay.style.display = 'none';
     applyCameraBackground();
-    playSound('static');
     playSound('cam_open');
     playSound('on_cam');
 
@@ -379,58 +623,79 @@ function openCamera() {
             cameraOverlay.style.display = 'block';
             cameraAnimating = false;
         }
-    }, 24);
-}
-
-function closeCamera() {
-    cameraCloseTimeout = setTimeout(() => {
-        if (cameraAnimating) {
-            clearInterval(cameraAnimInterval);
-            cameraAnimInterval = null;
-            cameraAnimating = false;
-        }
-        cameraOverlay.style.display = 'none';
-        cameraAnimation.style.display = 'none';
-        cameraHovered = false;
-        mouseInOverlay = false;
-        stopSound('on_cam');
-        playSound('put_down');
-        sendAction('setCamera', null, false);
     }, 20);
 }
 
-cameraContainer.addEventListener('mouseenter', () => {
-    if (cameraHovered && mouseInOverlay) {
-        closeCamera();
-        return;
-    }
-    openCamera();
-    sendAction('setCamera', null, true);
-});
+function closeCamera() {
+    if (cameraAnimating || !isCameraUp) return;
+    isCameraUp = false;
+    cameraHovered = false;
 
-cameraContainer.addEventListener('mouseleave', () => {
-    if (!cameraAnimating && !mouseInOverlay) {
-        closeCamera();
-    }
-});
-
-cameraOverlay.addEventListener('mouseenter', () => {
-    mouseInOverlay = true;
     if (cameraCloseTimeout) {
         clearTimeout(cameraCloseTimeout);
         cameraCloseTimeout = null;
     }
+
+    if (cameraAnimInterval) {
+        clearInterval(cameraAnimInterval);
+        cameraAnimInterval = null;
+    }
+
+    mouseInOverlay = false;
+    stopSound('on_cam');
+    playSound('put_down');
+
+    cameraAnimating = true;
+    cameraOverlay.style.display = 'none';
+    cameraAnimation.style.display = 'block';
+
+    // Play flip-down animation in REVERSE (from 11.png down to 1.png)
+    cameraAnimFrame = cameraAnimFrames.length - 1;
+
+    cameraAnimInterval = setInterval(() => {
+        if (cameraAnimFrame >= 0) {
+            cameraAnimation.src = cameraAnimFrames[cameraAnimFrame];
+            cameraAnimFrame--;
+        } else {
+            clearInterval(cameraAnimInterval);
+            cameraAnimInterval = null;
+            cameraAnimation.style.display = 'none';
+            cameraAnimating = false;
+            sendAction('setCamera', null, false);
+        }
+    }, 20);
+}
+
+let canToggleCamera = true;
+
+cameraContainer.addEventListener('mouseenter', () => {
+    if (!canToggleCamera || cameraAnimating) return;
+    canToggleCamera = false;
+
+    if (isCameraUp) {
+        closeCamera();
+    } else {
+        openCamera();
+        sendAction('setCamera', null, true);
+    }
+});
+
+cameraContainer.addEventListener('mouseleave', () => {
+    canToggleCamera = true;
+});
+
+cameraOverlay.addEventListener('mouseenter', () => {
+    mouseInOverlay = true;
 });
 
 cameraOverlay.addEventListener('mouseleave', () => {
     mouseInOverlay = false;
-    if (!cameraAnimating) {
-        closeCamera();
-    }
 });
 
 document.querySelectorAll('.camera-position').forEach(pos => {
-    pos.addEventListener('click', () => {
+    pos.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
         const cam = pos.dataset.cam;
         if (selectedCamera !== cam) {
             selectCamera(cam);
@@ -440,12 +705,50 @@ document.querySelectorAll('.camera-position').forEach(pos => {
 });
 
 let prevDoorState = { left: null, right: null };
+let prevLightState = { left: false, right: false };
+let prevAnimLocations = { freddy: null, bonnie: null, chica: null, foxy: null, foxyStage: null };
 
 function onServerState(state) {
     if (!state) return;
     currentState = state;
 
     checkVariants(state);
+
+    const a = state.animatronics;
+
+    // Check windowscare sound when turning light on with animatronic at door
+    if (!prevLightState.left && state.lights.left && a.bonnie.location === 'office_door_left') {
+        playSound('windowscare');
+    }
+    if (!prevLightState.right && state.lights.right && a.chica.location === 'office_door_right') {
+        playSound('windowscare');
+    }
+    prevLightState.left = state.lights.left;
+    prevLightState.right = state.lights.right;
+
+    // Check random garble audio when an animatronic moves while camera is open
+    if (prevAnimLocations.freddy !== null) {
+        if (prevAnimLocations.freddy !== a.freddy.location ||
+            prevAnimLocations.bonnie !== a.bonnie.location ||
+            prevAnimLocations.chica !== a.chica.location ||
+            prevAnimLocations.foxy !== a.foxy.location ||
+            prevAnimLocations.foxyStage !== a.foxy.foxyStage) {
+            
+            if (state.cameraUp) {
+                const garbles = ['garble1', 'garble2', 'garble3'];
+                const randG = garbles[Math.floor(Math.random() * garbles.length)];
+                playSound(randG);
+            }
+        }
+    }
+
+    prevAnimLocations = {
+        freddy: a.freddy.location,
+        bonnie: a.bonnie.location,
+        chica: a.chica.location,
+        foxy: a.foxy.location,
+        foxyStage: a.foxy.foxyStage
+    };
 
     const aiDisplay = document.getElementById('aiDisplay');
     if (aiDisplay) {
@@ -463,21 +766,20 @@ function onServerState(state) {
     const rightDoor = document.getElementById('rightDoor');
 
     if (prevDoorState.left !== null && prevDoorState.left !== state.doors.left) {
-        leftDoor.style.transform = state.doors.left ? 'translateY(0%)' : 'translateY(-100%)';
         updateDoorTextureAnimated(leftDoor, 'left', state.doors.left);
         prevDoorState.left = state.doors.left;
     } else if (prevDoorState.left === null) {
-        leftDoor.style.transform = state.doors.left ? 'translateY(0%)' : 'translateY(-100%)';
-        updateDoorTexture(leftDoor, 'left', state.doors.left);
+        leftDoor.style.display = state.doors.left ? 'block' : 'none';
+        leftDoor.style.backgroundImage = state.doors.left ? "url('textures/doors/left/100.png')" : 'none';
         prevDoorState.left = state.doors.left;
     }
+
     if (prevDoorState.right !== null && prevDoorState.right !== state.doors.right) {
-        rightDoor.style.transform = state.doors.right ? 'translateY(0%)' : 'translateY(-100%)';
         updateDoorTextureAnimated(rightDoor, 'right', state.doors.right);
         prevDoorState.right = state.doors.right;
     } else if (prevDoorState.right === null) {
-        rightDoor.style.transform = state.doors.right ? 'translateY(0%)' : 'translateY(-100%)';
-        updateDoorTexture(rightDoor, 'right', state.doors.right);
+        rightDoor.style.display = state.doors.right ? 'block' : 'none';
+        rightDoor.style.backgroundImage = state.doors.right ? "url('textures/doors/right/118.png')" : 'none';
         prevDoorState.right = state.doors.right;
     }
 
@@ -504,11 +806,9 @@ function onServerState(state) {
 }
 
 function frame() {
-    if (mainMenu.style.display === 'none') {
+    if (mainMenu.style.display === 'none' && document.getElementById('customNightScreen').style.display === 'none' && document.getElementById('newStartScreen').style.display === 'none') {
         if (isCameraUp) {
-            cameraPan -= 0.6;
-            if (cameraPan < -40) cameraPan = 40;
-            cameraOverlay.style.backgroundPosition = `calc(50% + ${cameraPan}px) center`;
+            updateCctvPan();
         } else {
             if (mouseX < 0.25) {
                 cameraPan += 2;
@@ -533,8 +833,182 @@ function triggerJumpscare(reason) {
     playSound('jumpscare');
 }
 
+// Progression Save System
+function getSavedNight() {
+    return parseInt(localStorage.getItem('fnaf_saved_night') || '1', 10);
+}
+
+function setSavedNight(night) {
+    localStorage.setItem('fnaf_saved_night', night.toString());
+}
+
+function getSavedStars() {
+    return parseInt(localStorage.getItem('fnaf_saved_stars') || '0', 10);
+}
+
+function setSavedStars(stars) {
+    const current = getSavedStars();
+    if (stars > current) {
+        localStorage.setItem('fnaf_saved_stars', stars.toString());
+    }
+}
+
+let customAiLevels = {
+    freddy: 20,
+    bonnie: 20,
+    chica: 20,
+    foxy: 20
+};
+
+let menuTwitchTimeout = null;
+let menuFlickerTimeout = null;
+
+function stopMenuEffects() {
+    if (menuTwitchTimeout) clearTimeout(menuTwitchTimeout);
+    if (menuFlickerTimeout) clearTimeout(menuFlickerTimeout);
+    menuTwitchTimeout = null;
+    menuFlickerTimeout = null;
+}
+
+function startMenuEffects() {
+    stopMenuEffects();
+
+    function scheduleNextTwitch() {
+        if (mainMenu.style.display === 'none') return;
+        const delay = Math.floor(Math.random() * 700) + 300;
+        menuTwitchTimeout = setTimeout(() => {
+            if (mainMenu.style.display !== 'none') {
+                const twitchVariants = ['440.png', '441.png', '442.png'];
+                const randFrame = twitchVariants[Math.floor(Math.random() * twitchVariants.length)];
+                menuBg.src = 'textures/main menu/' + randFrame;
+                menuBg.style.opacity = '1.0';
+
+                const duration = Math.floor(Math.random() * 100) + 60;
+                setTimeout(() => {
+                    if (mainMenu.style.display !== 'none') {
+                        menuBg.src = 'textures/main menu/431.png';
+                    }
+                    scheduleNextTwitch();
+                }, duration);
+            }
+        }, delay);
+    }
+
+    function scheduleNextFlicker() {
+        if (mainMenu.style.display === 'none') return;
+        const delay = Math.floor(Math.random() * 250) + 100;
+        menuFlickerTimeout = setTimeout(() => {
+            if (mainMenu.style.display !== 'none') {
+                const opacities = [1.0, 1.0, 1.0, 0.8, 0.4, 0.0, 0.0, 0.6];
+                const randOpacity = opacities[Math.floor(Math.random() * opacities.length)];
+                menuBg.style.opacity = randOpacity.toString();
+
+                scheduleNextFlicker();
+            }
+        }, delay);
+    }
+
+    scheduleNextTwitch();
+    scheduleNextFlicker();
+}
+
+function startMenuTwitch() {
+    startMenuEffects();
+}
+
+function renderMainMenu() {
+    const savedNight = Math.min(5, Math.max(1, getSavedNight()));
+    const continueSubhead = document.getElementById('continueSubhead');
+    if (continueSubhead) {
+        continueSubhead.textContent = 'Night ' + savedNight;
+    }
+
+    const btnNight6 = document.getElementById('btnNight6');
+    const btnCustomNight = document.getElementById('btnCustomNight');
+    
+    const unlockedNight = parseInt(localStorage.getItem('fnaf_saved_night') || '1', 10);
+
+    if (btnNight6) btnNight6.style.display = unlockedNight >= 6 ? 'block' : 'none';
+    if (btnCustomNight) btnCustomNight.style.display = 'block'; // Available by default
+
+    // Render stars
+    const starsContainer = document.getElementById('starsContainer');
+    if (starsContainer) {
+        starsContainer.innerHTML = '';
+        let starCount = 0;
+        if (unlockedNight >= 6) starCount = 1;
+        if (unlockedNight >= 7) starCount = 2;
+        if (getSavedStars() >= 3) starCount = 3;
+
+        for (let i = 0; i < starCount; i++) {
+            const img = document.createElement('img');
+            img.src = 'textures/main menu/star.png';
+            img.alt = 'Star';
+            starsContainer.appendChild(img);
+        }
+    }
+}
+
+function updateCustomAiDisplay() {
+    const f = document.getElementById('customAiFreddy');
+    const b = document.getElementById('customAiBonnie');
+    const c = document.getElementById('customAiChica');
+    const fx = document.getElementById('customAiFoxy');
+    if (f) f.textContent = customAiLevels.freddy;
+    if (b) b.textContent = customAiLevels.bonnie;
+    if (c) c.textContent = customAiLevels.chica;
+    if (fx) fx.textContent = customAiLevels.foxy;
+}
+
+function adjustCustomAI(anim, delta) {
+    if (customAiLevels[anim] !== undefined) {
+        customAiLevels[anim] = Math.max(0, Math.min(20, customAiLevels[anim] + delta));
+        updateCustomAiDisplay();
+    }
+}
+
+document.getElementById('freddyMinus')?.addEventListener('click', () => adjustCustomAI('freddy', -1));
+document.getElementById('freddyPlus')?.addEventListener('click', () => adjustCustomAI('freddy', 1));
+document.getElementById('bonnieMinus')?.addEventListener('click', () => adjustCustomAI('bonnie', -1));
+document.getElementById('bonniePlus')?.addEventListener('click', () => adjustCustomAI('bonnie', 1));
+document.getElementById('chicaMinus')?.addEventListener('click', () => adjustCustomAI('chica', -1));
+document.getElementById('chicaPlus')?.addEventListener('click', () => adjustCustomAI('chica', 1));
+document.getElementById('foxyMinus')?.addEventListener('click', () => adjustCustomAI('foxy', -1));
+document.getElementById('foxyPlus')?.addEventListener('click', () => adjustCustomAI('foxy', 1));
+
+document.getElementById('btnStartCustom')?.addEventListener('click', () => {
+    document.getElementById('customNightScreen').style.display = 'none';
+    const is20202020 = customAiLevels.freddy === 20 && customAiLevels.bonnie === 20 && customAiLevels.chica === 20 && customAiLevels.foxy === 20;
+    if (is20202020) setSavedStars(3);
+    startGame(7, customAiLevels);
+});
+
+document.getElementById('btnBackCustom')?.addEventListener('click', () => {
+    document.getElementById('customNightScreen').style.display = 'none';
+    showMainMenu();
+});
+
+// Setup hover selector arrow positioning
+const selectorArrow = document.getElementById('selectorArrow');
+document.querySelectorAll('.menu-item').forEach(item => {
+    item.addEventListener('mouseenter', () => {
+        if (selectorArrow && item.style.display !== 'none') {
+            const rect = item.getBoundingClientRect();
+            const parentRect = mainMenu.getBoundingClientRect();
+            selectorArrow.style.display = 'block';
+            selectorArrow.style.top = (rect.top - parentRect.top + 4) + 'px';
+            selectorArrow.style.left = (rect.left - parentRect.left - 45) + 'px';
+        }
+    });
+    item.addEventListener('mouseleave', () => {
+        if (selectorArrow) selectorArrow.style.display = 'none';
+    });
+});
+
 function showMainMenu() {
+    renderMainMenu();
     mainMenu.style.display = 'flex';
+    document.getElementById('customNightScreen').style.display = 'none';
     office.style.display = 'none';
     document.getElementById('cameraContainer').style.display = 'none';
     document.getElementById('powerUsage').style.display = 'none';
@@ -545,20 +1019,53 @@ function showMainMenu() {
     cameraAnimation.style.display = 'none';
     stopSound('ambience');
     playSound('menuAmbience');
+    startMenuTwitch();
 }
 
 function hideMainMenu() {
     mainMenu.style.display = 'none';
+    document.getElementById('customNightScreen').style.display = 'none';
     office.style.display = 'block';
     document.getElementById('cameraContainer').style.display = 'block';
     document.getElementById('powerUsage').style.display = 'flex';
     document.getElementById('timeDisplayContainer').style.display = 'flex';
     document.getElementById('aiDisplay').style.display = 'block';
     stopSound('menuAmbience');
-    playSound('ambience');
 }
 
-function startGame(night) {
+function getNightIntroFilename(night) {
+    switch (night) {
+        case 2: return '12 am 2 night.png';
+        case 5: return '12 am 5 night.png';
+        case 1: return '12am 1 night.png';
+        case 3: return '12am 3 night.png';
+        case 4: return '12am 4 night.png';
+        case 6: return '12am 6 night.png';
+        case 7:
+        default: return '12am 7 night.png';
+    }
+}
+
+function showNightIntro(night, callback) {
+    const nightIntroScreen = document.getElementById('nightIntroScreen');
+    const nightIntroImg = document.getElementById('nightIntroImg');
+    
+    if (nightIntroScreen && nightIntroImg) {
+        nightIntroImg.src = 'textures/main menu/' + getNightIntroFilename(night);
+        nightIntroScreen.style.display = 'flex';
+        
+        setTimeout(() => {
+            nightIntroScreen.style.display = 'none';
+            playSound('ambience');
+            if (typeof callback === 'function') callback();
+        }, 3000);
+    } else {
+        playSound('ambience');
+        if (typeof callback === 'function') callback();
+    }
+}
+
+function startGame(night, customAI = null) {
     currentNight = night;
     currentRoomId = 'room_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
 
@@ -572,7 +1079,6 @@ function startGame(night) {
     cameraAnimation.style.display = 'none';
     cameraFeed.style.display = 'none';
     document.getElementById('jumpscare').style.display = 'none';
-    onClickBorder.style.display = 'none';
     cameraHovered = false;
     mouseInOverlay = false;
     if (cameraCloseTimeout) {
@@ -581,22 +1087,75 @@ function startGame(night) {
     }
 
     hideMainMenu();
-    joinGame(currentRoomId, night);
+    showNightIntro(night, () => {
+        joinGame(currentRoomId, night, customAI);
+    });
 }
 
-function returnToMainMenu() {
+function returnToMainMenu(win = false) {
+    if (win && currentNight <= 6) {
+        const nextNight = currentNight + 1;
+        const currentSaved = parseInt(localStorage.getItem('fnaf_saved_night') || '1', 10);
+        if (nextNight > currentSaved) {
+            setSavedNight(nextNight);
+        }
+    }
     showMainMenu();
 }
 
-document.getElementById('btnNewGame').addEventListener('click', () => startGame(1));
-document.getElementById('btnNight1').addEventListener('click', () => startGame(1));
-document.getElementById('btnNight2').addEventListener('click', () => startGame(2));
-document.getElementById('btnNight3').addEventListener('click', () => startGame(3));
-document.getElementById('btnNight4').addEventListener('click', () => startGame(4));
-document.getElementById('btnNight5').addEventListener('click', () => startGame(5));
-document.getElementById('btnNight6').addEventListener('click', () => startGame(6));
-document.getElementById('btnNight7').addEventListener('click', () => startGame(7));
-document.getElementById('btnCustomNight').addEventListener('click', () => startGame(1));
+const newStartScreen = document.getElementById('newStartScreen');
+
+function triggerNewStart(callback) {
+    stopMenuEffects();
+    mainMenu.style.display = 'none';
+    if (newStartScreen) {
+        newStartScreen.style.display = 'flex';
+        newStartScreen.classList.remove('fade-out');
+        newStartScreen.classList.add('fade-in');
+        
+        let proceedCalled = false;
+        function proceed() {
+            if (proceedCalled) return;
+            proceedCalled = true;
+            newStartScreen.removeEventListener('click', proceed);
+            
+            newStartScreen.classList.remove('fade-in');
+            newStartScreen.classList.add('fade-out');
+            setTimeout(() => {
+                newStartScreen.style.display = 'none';
+                newStartScreen.classList.remove('fade-out');
+                if (typeof callback === 'function') callback();
+            }, 600);
+        }
+
+        newStartScreen.addEventListener('click', proceed);
+        setTimeout(proceed, 5500);
+    } else {
+        if (typeof callback === 'function') callback();
+    }
+}
+
+document.getElementById('btnNewGame')?.addEventListener('click', () => {
+    setSavedNight(1);
+    triggerNewStart(() => {
+        startGame(1);
+    });
+});
+
+document.getElementById('btnContinue')?.addEventListener('click', () => {
+    const savedNight = getSavedNight();
+    startGame(savedNight);
+});
+
+document.getElementById('btnNight6')?.addEventListener('click', () => {
+    startGame(6);
+});
+
+document.getElementById('btnCustomNight')?.addEventListener('click', () => {
+    updateCustomAiDisplay();
+    mainMenu.style.display = 'none';
+    document.getElementById('customNightScreen').style.display = 'flex';
+});
 
 window.addEventListener('load', () => {
     showMainMenu();

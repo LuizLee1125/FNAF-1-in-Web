@@ -32,26 +32,25 @@ body {
 
 .door {
     position: absolute;
-    width: 15%;
-    height: 90%;
-    top: 5%;
+    width: 17%;
+    height: 100%;
+    top: 0;
     background-color: transparent;
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
-    transition: transform 0.25s;
-    transform: translateY(-100%);
     image-rendering: pixelated;
+    pointer-events: none;
+    z-index: 10;
+    display: none;
 }
 
 #leftDoor {
-    left: 5%;
-    background-image: url('textures/doors/left/100.png');
+    left: 4.5%;
 }
 
 #rightDoor {
-    right: 5%;
-    background-image: url('textures/doors/right/104.png');
+    right: 4.5%;
 }
 
 .button-panel {
@@ -81,6 +80,44 @@ body {
     background-color: transparent;
     image-rendering: pixelated;
     background-image: url('textures/doors/left/buttons/off all.png');
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes fadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+
+/* New Game Start Screen */
+#newStartScreen {
+    position: absolute;
+    inset: 0;
+    z-index: 700;
+    background-color: #000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    opacity: 0;
+}
+
+#newStartScreen.fade-in {
+    animation: fadeIn 0.6s forwards ease-in-out;
+}
+
+#newStartScreen.fade-out {
+    animation: fadeOut 0.6s forwards ease-in-out;
+}
+
+#newStartImg {
+    max-width: 90%;
+    max-height: 90%;
+    object-fit: contain;
+    image-rendering: pixelated;
 }
 
 #toggleRight {
@@ -115,7 +152,7 @@ body {
     position: absolute;
     bottom: 4%;
     left: 2%;
-    z-index: 10;
+    z-index: 150;
     display: flex;
     flex-direction: column;
 }
@@ -146,7 +183,7 @@ body {
     position: absolute;
     top: 3%;
     right: 4%;
-    z-index: 10;
+    z-index: 150;
     display: flex;
     flex-direction: column;
     align-items: flex-end;
@@ -154,12 +191,12 @@ body {
 
 #cameraContainer {
     position: absolute;
-    bottom: 2%;
+    bottom: 1%;
     left: 50%;
     transform: translateX(-50%);
-    width: 350px;
-    height: 50px;
-    z-index: 60;
+    width: 400px;
+    height: 55px;
+    z-index: 300;
 }
 
 #cameraDropdown {
@@ -170,11 +207,15 @@ body {
     background-position: center bottom;
     background-repeat: no-repeat;
     cursor: pointer;
-    opacity: 0.8;
+    opacity: 0.75;
+    transition: opacity 0.15s ease, filter 0.15s ease, transform 0.15s ease;
+    image-rendering: pixelated;
 }
 
 #cameraDropdown:hover {
     opacity: 1;
+    filter: brightness(1.4) drop-shadow(0 0 12px rgba(255, 255, 255, 0.7));
+    transform: scale(1.03);
 }
 
 #cameraOverlay {
@@ -183,6 +224,7 @@ body {
     z-index: 50;
     background: #000;
     display: none;
+    overflow: hidden;
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
@@ -191,27 +233,83 @@ body {
 
 #cameraFeed {
     position: absolute;
-    top: 0;
-    left: 0;
+    top: -5%;
+    left: -5%;
+    width: 110%;
+    height: 110%;
+    object-fit: cover;
+    image-rendering: pixelated;
+    display: none;
+    will-change: transform;
+}
+
+#camGlitch {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
     image-rendering: pixelated;
+    z-index: 53;
     display: none;
+    pointer-events: none;
 }
 
 .red-dot {
     position: absolute;
-    top: 20px;
-    left: 20px;
-    width: 15px;
-    height: 15px;
+    top: 35px;
+    left: 35px;
+    width: 30px;
+    height: 30px;
     background-image: url('textures/camera/cam assets/red dot.png');
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
     animation: blink 1s infinite;
+    z-index: 55;
+    image-rendering: pixelated;
+}
+
+#camBorder {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+    pointer-events: none;
     z-index: 52;
+    image-rendering: pixelated;
+    opacity: 0.85;
+}
+
+#camNameImg {
+    position: absolute;
+    top: -35px;
+    left: 50%;
+    transform: translateX(-50%);
+    height: 26px;
+    width: auto;
+    object-fit: contain;
+    image-rendering: pixelated;
+    pointer-events: none;
+    z-index: 60;
+}
+
+#nightIntroScreen {
+    position: absolute;
+    inset: 0;
+    z-index: 800;
+    background-color: #000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#nightIntroImg {
+    max-width: 80%;
+    max-height: 80%;
+    object-fit: contain;
+    image-rendering: pixelated;
 }
 
 @keyframes blink {
@@ -225,7 +323,7 @@ body {
     right: 40px;
     width: 450px;
     height: 330px;
-    z-index: 51;
+    z-index: 55;
 }
 
 #camMapBg {
@@ -239,23 +337,15 @@ body {
     pointer-events: none;
 }
 
-.on-click-border {
-    position: absolute;
-    z-index: 1;
-    pointer-events: none;
-    display: none;
-    image-rendering: pixelated;
-}
-
 .camera-position {
     position: absolute;
-    width: 48px;
-    height: 32px;
+    width: 52px;
+    height: 34px;
     cursor: pointer;
     z-index: 10;
     padding: 0;
     background-image: url('textures/camera/cam assets/map border.png');
-    background-size: contain;
+    background-size: 100% 100%;
     background-position: center;
     background-repeat: no-repeat;
     background-color: transparent;
@@ -263,20 +353,25 @@ body {
     display: flex;
     justify-content: center;
     align-items: center;
+    image-rendering: pixelated;
+    transition: filter 0.1s ease;
 }
 
 .camera-position:hover {
+    filter: brightness(1.3);
+}
+
+.camera-position.active {
+    background-image: url('textures/camera/cam assets/on click map border.png');
     filter: brightness(1.2);
 }
 
-.camera-position > img:not(.on-click-border) {
-    width: 100%;
-    height: 100%;
+.camera-position > img {
+    width: 80%;
+    height: 80%;
     object-fit: contain;
     image-rendering: pixelated;
-    display: block;
-    position: relative;
-    z-index: 2;
+    pointer-events: none;
 }
 
 #cameraAnimation {
@@ -303,6 +398,7 @@ body {
 }
 
 /* Main Menu */
+/* Main Menu */
 #mainMenu {
     position: absolute;
     top: 0;
@@ -316,6 +412,7 @@ body {
     align-items: flex-start;
     padding-left: 10%;
     box-sizing: border-box;
+    background-color: #000;
 }
 
 #menuBg {
@@ -326,6 +423,7 @@ body {
     height: 100%;
     object-fit: cover;
     z-index: 1;
+    transition: opacity 0.05s ease;
 }
 
 #menuTitle {
@@ -333,8 +431,33 @@ body {
     z-index: 2;
     width: 250px;
     image-rendering: pixelated;
-    margin-bottom: 50px;
-    margin-top: -100px;
+    margin-bottom: 20px;
+    margin-top: -40px;
+}
+
+#starsContainer {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    gap: 8px;
+    margin-bottom: 25px;
+    height: 24px;
+}
+
+#starsContainer img {
+    height: 24px;
+    width: auto;
+    image-rendering: pixelated;
+}
+
+#selectorArrow {
+    position: absolute;
+    z-index: 10;
+    height: 22px;
+    width: auto;
+    display: none;
+    pointer-events: none;
+    image-rendering: pixelated;
 }
 
 .menu-buttons {
@@ -342,38 +465,39 @@ body {
     z-index: 2;
     display: flex;
     flex-direction: column;
-    gap: 15px;
+    gap: 20px;
     align-items: flex-start;
 }
 
-.menu-btn {
-    background: none;
-    border: none;
-    padding: 0;
+.menu-item {
+    position: relative;
     cursor: pointer;
     color: #fff;
     font-family: 'Courier New', Courier, monospace;
-    font-size: 28px;
+    font-size: 26px;
     font-weight: bold;
     text-align: left;
-    transition: color 0.1s;
-    text-shadow: 0 0 5px #000;
+    text-shadow: 0 0 6px #000;
+    user-select: none;
 }
 
-.menu-btn:hover {
-    color: #ccc;
+.menu-item:hover {
+    color: #e0e0e0;
 }
 
-.menu-btn::before {
-    content: ">> ";
+.menu-subhead {
+    font-size: 16px;
+    color: #888;
+    margin-top: 2px;
+    font-weight: normal;
+    letter-spacing: 1px;
     opacity: 0;
-}
-.menu-btn:hover::before {
-    opacity: 1;
+    transition: opacity 0.15s ease;
 }
 
-.menu-btn img {
-    display: none;
+.menu-item:hover .menu-subhead {
+    opacity: 1;
+    color: #aaa;
 }
 
 #versionText {
@@ -381,8 +505,7 @@ body {
     bottom: 20px;
     left: 20px;
     z-index: 2;
-    color: #fff;
-    opacity: 0.7;
+    color: #888;
     font-size: 16px;
     font-family: 'Courier New', Courier, monospace;
 }
@@ -392,8 +515,136 @@ body {
     bottom: 20px;
     right: 20px;
     z-index: 2;
-    color: #fff;
-    opacity: 0.7;
+    color: #888;
     font-size: 16px;
     font-family: 'Courier New', Courier, monospace;
+}
+
+/* Custom Night Screen */
+#customNightScreen {
+    position: absolute;
+    inset: 0;
+    z-index: 600;
+    background-color: #000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-family: 'Courier New', Courier, monospace;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+.custom-title-img {
+    height: 45px;
+    width: auto;
+    object-fit: contain;
+    image-rendering: pixelated;
+    margin-bottom: 40px;
+}
+
+.custom-animatronics {
+    display: flex;
+    gap: 35px;
+    margin-bottom: 50px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.anim-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.8);
+    border: 2px solid #333;
+    padding: 18px 20px;
+    border-radius: 4px;
+    width: 150px;
+}
+
+.anim-icon {
+    width: 110px;
+    height: 110px;
+    object-fit: contain;
+    image-rendering: pixelated;
+    margin-bottom: 12px;
+}
+
+.anim-name {
+    height: 22px;
+    object-fit: contain;
+    image-rendering: pixelated;
+    margin-bottom: 20px;
+}
+
+.ai-controls {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.ai-btn {
+    background: #111;
+    color: #fff;
+    border: 2px solid #555;
+    width: 36px;
+    height: 36px;
+    font-size: 20px;
+    font-weight: bold;
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: inherit;
+    transition: background 0.1s ease, border-color 0.1s ease;
+}
+
+.ai-btn:hover {
+    background: #333;
+    border-color: #aaa;
+}
+
+.ai-val {
+    font-size: 26px;
+    font-weight: bold;
+    width: 34px;
+    text-align: center;
+    color: #fff;
+}
+
+.custom-actions {
+    display: flex;
+    align-items: center;
+    gap: 40px;
+}
+
+.btn-ready-img {
+    height: 48px;
+    width: auto;
+    object-fit: contain;
+    image-rendering: pixelated;
+    cursor: pointer;
+    transition: filter 0.12s ease, transform 0.12s ease;
+}
+
+.btn-ready-img:hover {
+    filter: brightness(1.35) drop-shadow(0 0 10px rgba(255, 255, 255, 0.7));
+    transform: scale(1.05);
+}
+
+.custom-back-btn {
+    color: #888;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 26px;
+    font-weight: bold;
+    cursor: pointer;
+    letter-spacing: 2px;
+    transition: color 0.12s ease, text-shadow 0.12s ease;
+}
+
+.custom-back-btn:hover {
+    color: #ffffff;
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.9);
 }
