@@ -142,7 +142,7 @@ function attemptMove(room, name) {
   const roll = Math.floor(Math.random() * 20) + 1;
   if (roll > state.ai) return;
 
-  // Freddy special rule: Freddy won't leave 1A until Bonnie and Chica leave 1A
+  // Freddy won't leave 1A until Bonnie and Chica leave 1A
   if (name === 'freddy' && state.location === '1A') {
     if (room.animatronics.bonnie.location === '1A' || room.animatronics.chica.location === '1A') {
       return;

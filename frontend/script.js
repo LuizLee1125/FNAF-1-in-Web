@@ -112,7 +112,8 @@ const audioSources = {
     Blip3: 'audio/Blip3.mp3',
     put_down: 'audio/put down.wav',
     ambience: 'audio/office ambience.mp3',
-    menuAmbience: 'audio/main menu ambience.mp3'
+    menuAmbience: 'audio/main menu ambience.mp3',
+    error: 'audio/error.wav'
 };
 
 const audio = {};
@@ -304,9 +305,9 @@ function updateCameraTexture(state) {
         if (fAt1A && bAt1A && cAt1A) {
             imgSrc = '1A.png'; // Default when no animatronics leave stage
         } else if (fAt1A && cAt1A && !bAt1A) {
-            imgSrc = '1A chica.png'; // Only Bonnie leaves
+            imgSrc = '1A bonnie.png'; // Bonnie leaves 1A (stage without Bonnie)
         } else if (fAt1A && bAt1A && !cAt1A) {
-            imgSrc = '1A bonnie.png'; // Only Chica leaves
+            imgSrc = '1A chica.png'; // Chica leaves 1A (stage without Chica)
         } else if (fAt1A && !bAt1A && !cAt1A) {
             imgSrc = '1A bonnie_chica.png'; // Both Bonnie and Chica leave
         } else if (!fAt1A && !bAt1A && !cAt1A) {
@@ -555,6 +556,10 @@ function playCamGlitch() {
 
 function selectCamera(cam) {
     selectedCamera = cam;
+
+    if (typeof sendAction === 'function') {
+        sendAction('selectCamera', null, cam);
+    }
 
     // Toggle active class on map buttons
     document.querySelectorAll('.camera-position').forEach(btn => {

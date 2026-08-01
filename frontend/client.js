@@ -4,6 +4,7 @@ const socket = io();
 
 let gameActive = false;
 let lightState = { left: false, right: false };
+let jammedState = { left: false, right: false };
 
 socket.on('connect', () => {
   console.log('Connected to FNAF Backend');
@@ -11,12 +12,24 @@ socket.on('connect', () => {
 
 socket.on('stateUpdate', (state) => {
   gameActive = true;
-  if (state && state.lights) {
-    lightState.left = state.lights.left;
-    lightState.right = state.lights.right;
+  if (state) {
+    if (state.lights) {
+      lightState.left = state.lights.left;
+      lightState.right = state.lights.right;
+    }
+    if (state.jammed) {
+      jammedState.left = state.jammed.left;
+      jammedState.right = state.jammed.right;
+    }
   }
   if (typeof onServerState === 'function') {
     onServerState(state);
+  }
+});
+
+socket.on('actionError', (data) => {
+  if (data && data.sound && typeof playSound === 'function') {
+    playSound(data.sound);
   }
 });
 
@@ -49,6 +62,14 @@ function handleButtonClick(e, side) {
   const rect = btn.getBoundingClientRect();
   const clickY = e.clientY - rect.top;
   const halfHeight = rect.height / 2;
+
+  if (jammedState[side]) {
+    if (typeof playSound === 'function') {
+      playSound('error');
+    }
+    sendAction(clickY < halfHeight ? 'toggleDoor' : 'toggleLight', side);
+    return;
+  }
 
   // Top half = door, bottom half = light
   if (clickY < halfHeight) {
