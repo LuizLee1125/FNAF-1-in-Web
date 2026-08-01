@@ -36,12 +36,19 @@ socket.on('actionError', (data) => {
 socket.on('gameEnd', (data) => {
   gameActive = false;
   if (data.result === 'win') {
+    if (typeof stopPowerOutageSequence === 'function') {
+      stopPowerOutageSequence();
+    }
     alert('6 AM - You Win!');
+    if (typeof returnToMainMenu === 'function') {
+      returnToMainMenu(true);
+    }
   } else if (data.result === 'powerOut') {
-    alert('Power Outage!');
-  }
-  if (typeof returnToMainMenu === 'function') {
-    returnToMainMenu(data.result === 'win');
+    if (typeof triggerPowerOutage === 'function') {
+      triggerPowerOutage();
+    } else if (typeof returnToMainMenu === 'function') {
+      returnToMainMenu(false);
+    }
   }
 });
 

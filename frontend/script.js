@@ -113,7 +113,8 @@ const audioSources = {
     put_down: 'audio/put down.wav',
     ambience: 'audio/office ambience.mp3',
     menuAmbience: 'audio/main menu ambience.mp3',
-    error: 'audio/error.wav'
+    error: 'audio/error.wav',
+    musicBox: 'audio/music box.wav'
 };
 
 const audio = {};
@@ -454,6 +455,29 @@ const jumpscareFrames = {
         'textures/jumpscares/freddy/516.png',
         'textures/jumpscares/freddy/517.png',
         'textures/jumpscares/freddy/518.png'
+    ],
+    freddy2: [
+        'textures/jumpscares/freddy 2/301.png',
+        'textures/jumpscares/freddy 2/305.png',
+        'textures/jumpscares/freddy 2/307.png',
+        'textures/jumpscares/freddy 2/308.png',
+        'textures/jumpscares/freddy 2/309.png',
+        'textures/jumpscares/freddy 2/310.png',
+        'textures/jumpscares/freddy 2/311.png',
+        'textures/jumpscares/freddy 2/312.png',
+        'textures/jumpscares/freddy 2/313.png',
+        'textures/jumpscares/freddy 2/314.png',
+        'textures/jumpscares/freddy 2/315.png',
+        'textures/jumpscares/freddy 2/316.png',
+        'textures/jumpscares/freddy 2/317.png',
+        'textures/jumpscares/freddy 2/318.png',
+        'textures/jumpscares/freddy 2/319.png',
+        'textures/jumpscares/freddy 2/320.png',
+        'textures/jumpscares/freddy 2/321.png',
+        'textures/jumpscares/freddy 2/322.png',
+        'textures/jumpscares/freddy 2/323.png',
+        'textures/jumpscares/freddy 2/324.png',
+        'textures/jumpscares/freddy 2/325.png'
     ]
 };
 
@@ -721,12 +745,25 @@ function onServerState(state) {
 
     const a = state.animatronics;
 
-    // Check windowscare sound when turning light on with animatronic at door
+    if (a.bonnie.location !== 'office_door_left') {
+        scaredAtDoor.left = false;
+    }
+    if (a.chica.location !== 'office_door_right') {
+        scaredAtDoor.right = false;
+    }
+
+    // Check windowscare sound when turning light on with animatronic at door (only once per visit)
     if (!prevLightState.left && state.lights.left && a.bonnie.location === 'office_door_left') {
-        playSound('windowscare');
+        if (!scaredAtDoor.left) {
+            playSound('windowscare');
+            scaredAtDoor.left = true;
+        }
     }
     if (!prevLightState.right && state.lights.right && a.chica.location === 'office_door_right') {
-        playSound('windowscare');
+        if (!scaredAtDoor.right) {
+            playSound('windowscare');
+            scaredAtDoor.right = true;
+        }
     }
     prevLightState.left = state.lights.left;
     prevLightState.right = state.lights.right;
@@ -827,10 +864,127 @@ function frame() {
     requestAnimationFrame(frame);
 }
 
+let isPowerOutage = false;
+let powerOutageTimeouts = [];
+let powerOutageIntervals = [];
+let scaredAtDoor = { left: false, right: false };
+
+function clearPowerOutageTimers() {
+    powerOutageTimeouts.forEach(t => clearTimeout(t));
+    powerOutageIntervals.forEach(i => clearInterval(i));
+    powerOutageTimeouts = [];
+    powerOutageIntervals = [];
+}
+
+function stopPowerOutageSequence() {
+    isPowerOutage = false;
+    clearPowerOutageTimers();
+    stopSound('musicBox');
+    stopSound('powerdown');
+    if (office) office.style.backgroundColor = '';
+}
+
 function triggerPowerOutage() {
-    office.style.backgroundImage = "url('textures/office/power out.png')";
+    if (isPowerOutage) return;
+    isPowerOutage = true;
+    clearPowerOutageTimers();
+
     stopSound('ambience');
+    stopSound('on_cam');
     playSound('powerdown');
+
+    // Close lights and flip open doors visually
+    const leftDoor = document.getElementById('leftDoor');
+    const rightDoor = document.getElementById('rightDoor');
+    if (leftDoor) leftDoor.style.display = 'none';
+    if (rightDoor) rightDoor.style.display = 'none';
+    prevDoorState = { left: false, right: false };
+
+    // Force camera down & hide hover bar + disable flipping open
+    isCameraUp = false;
+    cameraOverlay.style.display = 'none';
+    cameraAnimation.style.display = 'none';
+    const cameraContainer = document.getElementById('cameraContainer');
+    if (cameraContainer) cameraContainer.style.display = 'none';
+    canToggleCamera = false;
+
+    // Hide door & light button panels
+    const leftButtons = document.getElementById('leftButtons');
+    const rightButtons = document.getElementById('rightButtons');
+    if (leftButtons) leftButtons.style.display = 'none';
+    if (rightButtons) rightButtons.style.display = 'none';
+
+    // Show power out texture in office
+    office.style.display = 'block';
+    office.style.backgroundImage = "url('textures/office/power out.png')";
+
+    let currentPhase = 1;
+
+    // Phase 1: Wait up to 20 seconds before Freddy appears. Every 5s: 20% chance to move to Phase 2 earlier.
+    let phase1Elapsed = 0;
+    const phase1Interval = setInterval(() => {
+        if (!isPowerOutage) return;
+        phase1Elapsed += 5;
+        if (Math.random() < 0.2 || phase1Elapsed >= 20) {
+            clearInterval(phase1Interval);
+            startPhase2();
+        }
+    }, 5000);
+    powerOutageIntervals.push(phase1Interval);
+
+    function startPhase2() {
+        if (!isPowerOutage || currentPhase >= 2) return;
+        currentPhase = 2;
+
+        // Play music box audio
+        playSound('musicBox');
+
+        // Randomly flicker office between 'power out' and 'freddy music box'
+        const flickerInterval = setInterval(() => {
+            if (!isPowerOutage) return;
+            const showFreddy = Math.random() < 0.5;
+            office.style.backgroundImage = showFreddy 
+                ? "url('textures/office/freddy music box.png')" 
+                : "url('textures/office/power out.png')";
+        }, 120);
+        powerOutageIntervals.push(flickerInterval);
+
+        let phase2Elapsed = 0;
+        const phase2Interval = setInterval(() => {
+            if (!isPowerOutage) return;
+            phase2Elapsed += 5;
+            if (Math.random() < 0.2 || phase2Elapsed >= 60) {
+                clearInterval(phase2Interval);
+                clearInterval(flickerInterval);
+                startPhase3();
+            }
+        }, 5000);
+        powerOutageIntervals.push(phase2Interval);
+    }
+
+    function startPhase3() {
+        if (!isPowerOutage || currentPhase >= 3) return;
+        currentPhase = 3;
+
+        stopSound('musicBox');
+        // Black screen background
+        office.style.backgroundImage = 'none';
+        office.style.backgroundColor = '#000';
+
+        // Every 2s: 20% chance to jumpscare
+        const phase3Interval = setInterval(() => {
+            if (!isPowerOutage) return;
+            if (Math.random() < 0.2) {
+                clearInterval(phase3Interval);
+                stopPowerOutageSequence();
+                triggerJumpscare('freddy2');
+                setTimeout(() => {
+                    returnToMainMenu(false);
+                }, 2500);
+            }
+        }, 2000);
+        powerOutageIntervals.push(phase3Interval);
+    }
 }
 
 function triggerJumpscare(reason) {
@@ -1011,6 +1165,7 @@ document.querySelectorAll('.menu-item').forEach(item => {
 });
 
 function showMainMenu() {
+    stopPowerOutageSequence();
     renderMainMenu();
     mainMenu.style.display = 'flex';
     document.getElementById('customNightScreen').style.display = 'none';
@@ -1071,6 +1226,8 @@ function showNightIntro(night, callback) {
 }
 
 function startGame(night, customAI = null) {
+    stopPowerOutageSequence();
+    canToggleCamera = true;
     currentNight = night;
     currentRoomId = 'room_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
 

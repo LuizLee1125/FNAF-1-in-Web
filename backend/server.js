@@ -329,7 +329,16 @@ io.on('connection', (socket) => {
     if (action.type === 'toggleDoor') {
       room.doors[action.side] = !room.doors[action.side];
     } else if (action.type === 'toggleLight') {
-      room.lights[action.side] = !room.lights[action.side];
+      if (room.jammed[action.side]) {
+        socket.emit('actionError', { side: action.side, sound: 'error', reason: 'jammed' });
+        return;
+      }
+      const nextLightState = !room.lights[action.side];
+      room.lights[action.side] = nextLightState;
+      if (nextLightState) {
+        const otherSide = action.side === 'left' ? 'right' : 'left';
+        room.lights[otherSide] = false;
+      }
     } else if (action.type === 'toggleCamera') {
       room.cameraUp = !room.cameraUp;
     } else if (action.type === 'setCamera') {
