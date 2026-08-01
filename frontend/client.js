@@ -83,14 +83,13 @@ function handleButtonClick(e, side) {
     sendAction('toggleDoor', side);
     playSound('doorClick');
   } else {
-    const wasOn = lightState[side];
+    const isAnyLightOn = lightState.left || lightState.right;
     sendAction('toggleLight', side);
-    if (!wasOn) {
-      playSound('lightClick');
+    if (!lightState[side]) {
+      if (typeof playSound === 'function') playSound('lightClick');
     } else {
-      stopSound('lightClick');
+      if (typeof stopSound === 'function') stopSound('lightClick');
     }
-    lightState[side] = !wasOn;
   }
 }
 

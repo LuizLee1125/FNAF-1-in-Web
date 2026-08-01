@@ -250,11 +250,9 @@ function gameTick(roomId) {
   room.usage = usage;
 
   room.power = Math.max(0, room.power - POWER_DRAIN_BASE * usage);
-  if (room.power <= 0) {
-    room.state = 'gameover';
+  if (room.power <= 0 && !room.powerOutTriggered) {
+    room.powerOutTriggered = true;
     io.to(roomId).emit('gameEnd', { result: 'powerOut' });
-    stopRoomLoop(roomId);
-    return;
   }
 
   io.to(roomId).emit('stateUpdate', {

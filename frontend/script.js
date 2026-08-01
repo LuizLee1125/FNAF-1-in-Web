@@ -114,7 +114,12 @@ const audioSources = {
     ambience: 'audio/office ambience.mp3',
     menuAmbience: 'audio/main menu ambience.mp3',
     error: 'audio/error.wav',
-    musicBox: 'audio/music box.wav'
+    musicBox: 'audio/music box.wav',
+    randomsound1: 'audio/randomsound1.mp3',
+    randomsound2: 'audio/randomsound2.wav',
+    freddyLaugh1: 'audio/Laugh_Giggle_Girl_1d.wav',
+    freddyLaugh2: 'audio/Laugh_Giggle_Girl_2d.wav',
+    freddyLaugh3: 'audio/Laugh_Giggle_Girl_8d.wav'
 };
 
 const audio = {};
@@ -282,6 +287,13 @@ function updateDoorTextureAnimated(doorEl, side, isClosed) {
 function updateCameraTexture(state) {
     if (!state || !state.cameraUp) {
         cameraFeed.style.display = 'none';
+        return;
+    }
+
+    if (cameraBlackoutActive) {
+        cameraFeed.style.display = 'none';
+        cameraOverlay.style.backgroundImage = 'none';
+        cameraOverlay.style.backgroundColor = '#000';
         return;
     }
 
@@ -481,6 +493,16 @@ const jumpscareFrames = {
     ]
 };
 
+function preloadJumpscareImages() {
+    for (const frames of Object.values(jumpscareFrames)) {
+        frames.forEach(src => {
+            const img = new Image();
+            img.src = src;
+        });
+    }
+}
+preloadJumpscareImages();
+
 let jumpscareAnimInterval = null;
 
 function triggerJumpscare(reason) {
@@ -494,6 +516,7 @@ function triggerJumpscare(reason) {
 
     playSound('jumpscare');
     jumpscare.style.display = 'block';
+    jumpscare.style.zIndex = '1000';
 
     let frameIdx = 0;
     jumpscareAnimInterval = setInterval(() => {
@@ -768,14 +791,22 @@ function onServerState(state) {
     prevLightState.left = state.lights.left;
     prevLightState.right = state.lights.right;
 
-    // Check random garble audio when an animatronic moves while camera is open
+    // Check random garble audio and trigger 5-second camera blackout when an animatronic moves
     if (prevAnimLocations.freddy !== null) {
+        if (prevAnimLocations.freddy !== a.freddy.location) {
+            const laughs = ['freddyLaugh1', 'freddyLaugh2', 'freddyLaugh3'];
+            const randLaugh = laughs[Math.floor(Math.random() * laughs.length)];
+            playSound(randLaugh);
+        }
+
         if (prevAnimLocations.freddy !== a.freddy.location ||
             prevAnimLocations.bonnie !== a.bonnie.location ||
             prevAnimLocations.chica !== a.chica.location ||
             prevAnimLocations.foxy !== a.foxy.location ||
             prevAnimLocations.foxyStage !== a.foxy.foxyStage) {
             
+            triggerCameraBlackout();
+
             if (state.cameraUp) {
                 const garbles = ['garble1', 'garble2', 'garble3'];
                 const randG = garbles[Math.floor(Math.random() * garbles.length)];
@@ -783,6 +814,15 @@ function onServerState(state) {
             }
         }
     }
+
+    // Eerie random sound trigger on night progression (hour change) - disabled in power outage
+    if (prevHour !== null && prevHour !== state.hour && state.hour > 0) {
+        if (state.power > 0 && !isPowerOutage && Math.random() < 0.2) {
+            const randS = Math.random() < 0.5 ? 'randomsound1' : 'randomsound2';
+            playSound(randS);
+        }
+    }
+    prevHour = state.hour;
 
     prevAnimLocations = {
         freddy: a.freddy.location,
@@ -868,6 +908,26 @@ let isPowerOutage = false;
 let powerOutageTimeouts = [];
 let powerOutageIntervals = [];
 let scaredAtDoor = { left: false, right: false };
+let cameraBlackoutActive = false;
+let cameraBlackoutTimeout = null;
+let prevHour = null;
+
+function triggerCameraBlackout() {
+    cameraBlackoutActive = true;
+    if (cameraBlackoutTimeout) {
+        clearTimeout(cameraBlackoutTimeout);
+    }
+    if (isCameraUp && currentState) {
+        updateCameraTexture(currentState);
+    }
+    cameraBlackoutTimeout = setTimeout(() => {
+        cameraBlackoutActive = false;
+        cameraBlackoutTimeout = null;
+        if (isCameraUp && currentState) {
+            updateCameraTexture(currentState);
+        }
+    }, 5000);
+}
 
 function clearPowerOutageTimers() {
     powerOutageTimeouts.forEach(t => clearTimeout(t));
@@ -882,6 +942,10 @@ function stopPowerOutageSequence() {
     stopSound('musicBox');
     stopSound('powerdown');
     if (office) office.style.backgroundColor = '';
+    const powerUsage = document.getElementById('powerUsage');
+    const timeDisplayContainer = document.getElementById('timeDisplayContainer');
+    if (powerUsage) powerUsage.style.display = 'flex';
+    if (timeDisplayContainer) timeDisplayContainer.style.display = 'flex';
 }
 
 function triggerPowerOutage() {
@@ -892,6 +956,15 @@ function triggerPowerOutage() {
     stopSound('ambience');
     stopSound('on_cam');
     playSound('powerdown');
+
+    // Play door sound if any door was closed when power out hits
+    if (prevDoorState.left || prevDoorState.right) {
+        playSound('doorClick');
+    }
+
+    // Hide usage bar
+    const powerUsage = document.getElementById('powerUsage');
+    if (powerUsage) powerUsage.style.display = 'none';
 
     // Close lights and flip open doors visually
     const leftDoor = document.getElementById('leftDoor');
@@ -967,7 +1040,13 @@ function triggerPowerOutage() {
         currentPhase = 3;
 
         stopSound('musicBox');
-        // Black screen background
+
+        // Hide all text overlays for pure black screen in Phase 3
+        const timeDisplayContainer = document.getElementById('timeDisplayContainer');
+        if (timeDisplayContainer) timeDisplayContainer.style.display = 'none';
+        if (powerUsage) powerUsage.style.display = 'none';
+
+        // Actual black screen background
         office.style.backgroundImage = 'none';
         office.style.backgroundColor = '#000';
 
