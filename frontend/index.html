@@ -32,6 +32,7 @@
 
         <div id="cameraOverlay" style="display:none;">
             <img id="cameraFeed" src="" alt="Camera Feed" style="display:none;">
+            <img id="cameraStatic" src="textures/static/12.png" alt="" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; z-index: 5; opacity: 0.25;">
             <img id="camGlitch" src="" alt="" style="display:none;">
             <img id="camBorder" src="textures/camera/cam assets/cam border.png" alt="Cam Border">
             <div class="red-dot"></div>
@@ -88,6 +89,15 @@
 
         <img id="jumpscare" src="textures/jumpscares/freddy/489.png" alt="Jumpscare" style="display:none;">
 
+        <div id="deathStaticScreen" style="display: none; position: absolute; inset: 0; z-index: 1500; background: #000;">
+            <img id="deathStaticImg" src="textures/static/12.png" alt="" style="width: 100%; height: 100%; object-fit: cover; opacity: 1.0;">
+        </div>
+
+        <div id="gameOverScreen" style="display: none; position: absolute; inset: 0; z-index: 1600; background: #000; cursor: pointer; flex-direction: column; align-items: center; justify-content: center;">
+            <img id="gameOverImg" src="textures/main menu/gameover.png" alt="Game Over" style="max-width: 80%; max-height: 70%; object-fit: contain; image-rendering: pixelated;">
+            <img id="gameOverTxt" src="textures/main menu/gameovertxt.png" alt="" style="position: absolute; bottom: 30px; max-width: 60%; height: auto; object-fit: contain; image-rendering: pixelated;">
+        </div>
+
         <div id="powerUsage">
             <div class="hud-text" style="margin-bottom: 5px;">Power left: <span id="powerDisplay">100%</span></div>
             <div class="hud-text usage-container">
@@ -101,12 +111,9 @@
             <div id="nightDisplay" class="hud-text" style="font-size: 20px; text-align: right;">Night 1</div>
         </div>
 
-        <div id="newStartScreen" style="display:none;">
-            <img id="newStartImg" src="textures/main menu/new start.png" alt="Help Wanted - New Start">
-        </div>
-
         <div id="mainMenu" style="display:none;">
             <img id="menuBg" src="textures/main menu/431.png" alt="Menu Background">
+            <img id="menuStatic" src="textures/static/12.png" alt="" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; z-index: 2; opacity: 0.15;">
             <img id="menuTitle" src="textures/main menu/name.png" alt="FNAF">
             <div id="starsContainer"></div>
             

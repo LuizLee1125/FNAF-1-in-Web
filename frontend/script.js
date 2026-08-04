@@ -503,31 +503,141 @@ function preloadJumpscareImages() {
 }
 preloadJumpscareImages();
 
+const staticFrames = [
+    'textures/static/12.png',
+    'textures/static/13.png',
+    'textures/static/14.png',
+    'textures/static/15.png',
+    'textures/static/16.png',
+    'textures/static/17.png',
+    'textures/static/18.png',
+    'textures/static/20.png'
+];
+
+staticFrames.forEach(src => {
+    const img = new Image();
+    img.src = src;
+});
+
+let staticFrameIndex = 0;
+
+function updateStaticOverlay() {
+    staticFrameIndex = (staticFrameIndex + 1) % staticFrames.length;
+    const currentFrame = staticFrames[staticFrameIndex];
+
+    // 1. Main Menu Static Overlay: Random low opacity so Freddy & menu items stay visible
+    const menuStatic = document.getElementById('menuStatic');
+    const mainMenu = document.getElementById('mainMenu');
+    if (menuStatic && mainMenu && mainMenu.style.display !== 'none') {
+        menuStatic.src = currentFrame;
+        menuStatic.style.opacity = (0.06 + Math.random() * 0.16).toFixed(2);
+    }
+
+    // 2. Camera Static Overlay: Reduced opacity so camera view is visible underneath
+    const cameraStatic = document.getElementById('cameraStatic');
+    if (cameraStatic && typeof isCameraUp !== 'undefined' && isCameraUp) {
+        cameraStatic.src = currentFrame;
+        cameraStatic.style.opacity = (0.20 + Math.random() * 0.10).toFixed(2);
+    }
+
+    // 3. Death Static Screen: Full opacity (1.0)
+    const deathStaticImg = document.getElementById('deathStaticImg');
+    const deathStaticScreen = document.getElementById('deathStaticScreen');
+    if (deathStaticImg && deathStaticScreen && deathStaticScreen.style.display !== 'none') {
+        deathStaticImg.src = currentFrame;
+        deathStaticImg.style.opacity = '1.0';
+    }
+}
+
+setInterval(updateStaticOverlay, 50);
+
 let jumpscareAnimInterval = null;
+let jumpscareSequenceTimeout = null;
+let deathStaticTimeout = null;
+
+function showGameOverScreen() {
+    const gameOverScreen = document.getElementById('gameOverScreen');
+    if (!gameOverScreen) {
+        returnToMainMenu(false);
+        return;
+    }
+
+    stopSound('ambience');
+    stopSound('on_cam');
+    stopSound('garble1');
+    if (typeof stopPowerOutageSequence === 'function') {
+        stopPowerOutageSequence();
+    }
+
+    gameOverScreen.style.display = 'flex';
+
+    function onGameOverClick(e) {
+        if (e.button !== undefined && e.button !== 0) return;
+        gameOverScreen.removeEventListener('click', onGameOverClick);
+        gameOverScreen.style.display = 'none';
+        returnToMainMenu(false);
+    }
+
+    gameOverScreen.removeEventListener('click', onGameOverClick);
+    gameOverScreen.addEventListener('click', onGameOverClick);
+}
 
 function triggerJumpscare(reason) {
     const jumpscare = document.getElementById('jumpscare');
+    const deathStaticScreen = document.getElementById('deathStaticScreen');
+    const gameOverScreen = document.getElementById('gameOverScreen');
     const anim = jumpscareFrames[reason] || jumpscareFrames.freddy;
 
     if (jumpscareAnimInterval) {
         clearInterval(jumpscareAnimInterval);
         jumpscareAnimInterval = null;
     }
+    if (jumpscareSequenceTimeout) clearTimeout(jumpscareSequenceTimeout);
+    if (deathStaticTimeout) clearTimeout(deathStaticTimeout);
+
+    if (deathStaticScreen) deathStaticScreen.style.display = 'none';
+    if (gameOverScreen) gameOverScreen.style.display = 'none';
 
     playSound('jumpscare');
-    jumpscare.style.display = 'block';
-    jumpscare.style.zIndex = '1000';
+    if (jumpscare) {
+        jumpscare.style.display = 'block';
+        jumpscare.style.zIndex = '1000';
+    }
 
     let frameIdx = 0;
     jumpscareAnimInterval = setInterval(() => {
         if (frameIdx < anim.length) {
-            jumpscare.src = anim[frameIdx];
+            if (jumpscare) jumpscare.src = anim[frameIdx];
             frameIdx++;
         } else {
+            frameIdx = 0;
+        }
+    }, 28);
+
+    // 1. Jumpscare plays for ~2 seconds (2000 ms)
+    jumpscareSequenceTimeout = setTimeout(() => {
+        if (jumpscareAnimInterval) {
             clearInterval(jumpscareAnimInterval);
             jumpscareAnimInterval = null;
         }
-    }, 28);
+        if (jumpscare) jumpscare.style.display = 'none';
+
+        // 2. Full opacity death static screen plays for 3 seconds (3000 ms)
+        playSound('garble1');
+        if (deathStaticScreen) {
+            deathStaticScreen.style.display = 'block';
+        }
+
+        deathStaticTimeout = setTimeout(() => {
+            stopSound('garble1');
+            if (deathStaticScreen) {
+                deathStaticScreen.style.display = 'none';
+            }
+
+            // 3. Move to Game Over screen with gameover.png and gameovertxt.png (click to return to menu)
+            showGameOverScreen();
+        }, 3000);
+    }, 2000);
 }
 
 function updateButtonState(side, door, light) {
@@ -1097,9 +1207,6 @@ function triggerPowerOutage() {
                 clearInterval(phase3Interval);
                 stopPowerOutageSequence();
                 triggerJumpscare('freddy2');
-                setTimeout(() => {
-                    returnToMainMenu(false);
-                }, 2500);
             }
         }, 2000);
         powerOutageIntervals.push(phase3Interval);
