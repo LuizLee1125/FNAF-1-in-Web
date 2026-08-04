@@ -11,16 +11,16 @@ const io = new Server(server, {
 
 app.use(express.static(path.join(__dirname, '../frontend')));
 
-const TICK_MS = 1000;
+const TICK_MS = 100;
 const HOUR_TICKS = 60;
 const TOTAL_HOURS = 6;
 const POWER_DRAIN_BASE = 0.09;
 
 const MOVEMENT_CONFIG = {
-  freddy: { threshold: 3, cameraStall: true },
-  bonnie: { threshold: 5, cameraStall: false },
-  chica: { threshold: 5, cameraStall: false },
-  foxy: { threshold: 5, cameraStall: true }
+  freddy: { intervalMs: 10000, cameraStall: true },
+  bonnie: { intervalMs: 9970, cameraStall: false },
+  chica: { intervalMs: 9980, cameraStall: false },
+  foxy: { intervalMs: 6010, cameraStall: true }
 };
 
 // FNAF 1 Accurate Room Graph
@@ -96,13 +96,16 @@ const roomIntervals = new Map();
 
 function createRoom(roomId, night, customAI) {
   const initialAI = customAI || getAIForHour({ night: night || 1 }, 0);
+  const now = Date.now();
   return {
     id: roomId,
     night: night || 1,
     customAI: customAI || null,
     state: 'waiting',
     hour: 0,
-    tickCounter: 0,
+    hourTimerMs: 0,
+    broadcastTimerMs: 0,
+    lastTickTime: now,
     power: 100.0,
     usage: 1,
     players: [],
@@ -111,10 +114,10 @@ function createRoom(roomId, night, customAI) {
     jammed: { left: false, right: false },
     cameraUp: false,
     animatronics: {
-      freddy: { location: '1A', ai: initialAI.freddy, movementTimer: 0 },
-      bonnie: { location: '1A', ai: initialAI.bonnie, movementTimer: 0 },
-      chica: { location: '1A', ai: initialAI.chica, movementTimer: 0 },
-      foxy: { location: '1C', ai: initialAI.foxy, movementTimer: 0, foxyStage: 0 }
+      freddy: { location: '1A', ai: initialAI.freddy, movementTimerMs: 0 },
+      bonnie: { location: '1A', ai: initialAI.bonnie, movementTimerMs: 0 },
+      chica: { location: '1A', ai: initialAI.chica, movementTimerMs: 0 },
+      foxy: { location: '1C', ai: initialAI.foxy, movementTimerMs: 0, foxyStage: 0, stallTimerMs: 0 }
     }
   };
 }
@@ -139,7 +142,16 @@ function attemptMove(room, name) {
   const config = MOVEMENT_CONFIG[name];
 
   if (state.ai <= 0) return;
-  if (config.cameraStall && room.cameraUp) return;
+
+  // Foxy camera stall check
+  if (name === 'foxy' && (room.cameraUp || state.stallTimerMs > 0)) {
+    return;
+  }
+
+  // Freddy camera stall check
+  if (name === 'freddy' && room.cameraUp) {
+    return;
+  }
 
   const roll = Math.floor(Math.random() * 20) + 1;
   if (roll > state.ai) return;
@@ -229,10 +241,14 @@ function gameTick(roomId) {
   const room = rooms.get(roomId);
   if (!room || room.state !== 'playing') return;
 
-  room.tickCounter++;
+  const now = Date.now();
+  const deltaMs = room.lastTickTime ? Math.min(1000, now - room.lastTickTime) : 100;
+  room.lastTickTime = now;
 
-  if (room.tickCounter >= HOUR_TICKS) {
-    room.tickCounter = 0;
+  // Hour tracking (60 seconds per hour)
+  room.hourTimerMs += deltaMs;
+  if (room.hourTimerMs >= 60000) {
+    room.hourTimerMs -= 60000;
     room.hour++;
 
     if (room.hour >= TOTAL_HOURS) {
@@ -248,10 +264,27 @@ function gameTick(roomId) {
     }
   }
 
+  // Foxy camera stall
+  const foxy = room.animatronics.foxy;
+  if (room.cameraUp) {
+    if (foxy.stallTimerMs <= 0) {
+      foxy.stallTimerMs = Math.floor((Math.random() * 14 + 3) * 1000); // 3-17s random stall
+    }
+  }
+
+  // Animatronics movement timers
   for (const [name, config] of Object.entries(MOVEMENT_CONFIG)) {
-    room.animatronics[name].movementTimer += 1;
-    if (room.animatronics[name].movementTimer >= config.threshold) {
-      room.animatronics[name].movementTimer = 0;
+    const anim = room.animatronics[name];
+
+    if (name === 'foxy' && anim.stallTimerMs > 0) {
+      anim.stallTimerMs = Math.max(0, anim.stallTimerMs - deltaMs);
+      anim.movementTimerMs = 0;
+      continue;
+    }
+
+    anim.movementTimerMs += deltaMs;
+    if (anim.movementTimerMs >= config.intervalMs) {
+      anim.movementTimerMs -= config.intervalMs;
       attemptMove(room, name);
     }
   }
@@ -264,25 +297,33 @@ function gameTick(roomId) {
   if (room.cameraUp) usage++;
   room.usage = usage;
 
-  room.power = Math.max(0, room.power - POWER_DRAIN_BASE * usage);
-  if (room.power <= 0) {
-    room.doors.left = false;
-    room.doors.right = false;
-    room.lights.left = false;
-    room.lights.right = false;
-    room.cameraUp = false;
-    room.usage = 1;
-    if (!room.powerOutTriggered) {
-      room.powerOutTriggered = true;
-      io.to(roomId).emit('gameEnd', { result: 'powerOut' });
+  if (room.power > 0) {
+    room.power = Math.max(0, room.power - (POWER_DRAIN_BASE * (deltaMs / 1000) * usage));
+    if (room.power <= 0) {
+      room.doors.left = false;
+      room.doors.right = false;
+      room.lights.left = false;
+      room.lights.right = false;
+      room.cameraUp = false;
+      room.usage = 1;
+      if (!room.powerOutTriggered) {
+        room.powerOutTriggered = true;
+        io.to(roomId).emit('gameEnd', { result: 'powerOut' });
+      }
     }
   }
 
-  io.to(roomId).emit('stateUpdate', getRoomStatePayload(room));
+  room.broadcastTimerMs += deltaMs;
+  if (room.broadcastTimerMs >= 1000) {
+    room.broadcastTimerMs = 0;
+    io.to(roomId).emit('stateUpdate', getRoomStatePayload(room));
+  }
 }
 
 function startRoomLoop(roomId) {
   if (roomIntervals.has(roomId)) return;
+  const room = rooms.get(roomId);
+  if (room) room.lastTickTime = Date.now();
   const interval = setInterval(() => gameTick(roomId), TICK_MS);
   roomIntervals.set(roomId, interval);
 }
@@ -350,8 +391,14 @@ io.on('connection', (socket) => {
       }
     } else if (action.type === 'toggleCamera') {
       room.cameraUp = !room.cameraUp;
+      if (room.cameraUp && room.animatronics.foxy.stallTimerMs <= 0) {
+        room.animatronics.foxy.stallTimerMs = Math.floor((Math.random() * 14 + 3) * 1000);
+      }
     } else if (action.type === 'setCamera') {
       room.cameraUp = !!action.value;
+      if (room.cameraUp && room.animatronics.foxy.stallTimerMs <= 0) {
+        room.animatronics.foxy.stallTimerMs = Math.floor((Math.random() * 14 + 3) * 1000);
+      }
     }
 
     let usage = 1;
