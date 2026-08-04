@@ -610,25 +610,31 @@ function triggerJumpscare(reason) {
         jumpscare.style.zIndex = '1000';
     }
 
+    // Calculate frame interval so all frames play exactly once in 1 second
+    const totalDurationMs = 1000;
+    const frameIntervalMs = Math.floor(totalDurationMs / anim.length);
+
     let frameIdx = 0;
     jumpscareAnimInterval = setInterval(() => {
         if (frameIdx < anim.length) {
             if (jumpscare) jumpscare.src = anim[frameIdx];
             frameIdx++;
         } else {
+            // Loop back if the timeout hasn't fired yet
             frameIdx = 0;
         }
-    }, 28);
+    }, frameIntervalMs);
 
-    // 1. Jumpscare plays for ~2 seconds (2000 ms)
+    // 1. Jumpscare plays for 1 second
     jumpscareSequenceTimeout = setTimeout(() => {
         if (jumpscareAnimInterval) {
             clearInterval(jumpscareAnimInterval);
             jumpscareAnimInterval = null;
         }
         if (jumpscare) jumpscare.style.display = 'none';
+        stopSound('jumpscare');
 
-        // 2. Full opacity death static screen plays for 3 seconds (3000 ms)
+        // 2. Full opacity death static screen plays for 3 seconds
         playSound('garble1');
         if (deathStaticScreen) {
             deathStaticScreen.style.display = 'block';
@@ -640,10 +646,10 @@ function triggerJumpscare(reason) {
                 deathStaticScreen.style.display = 'none';
             }
 
-            // 3. Move to Game Over screen with gameover.png and gameovertxt.png (click to return to menu)
+            // 3. Move to Game Over screen
             showGameOverScreen();
         }, 3000);
-    }, 2000);
+    }, totalDurationMs);
 }
 
 let winSequenceTimeout1 = null;
