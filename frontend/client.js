@@ -46,8 +46,13 @@ socket.on('gameEnd', (data) => {
     if (typeof stopPowerOutageSequence === 'function') {
       stopPowerOutageSequence();
     }
-    alert('6 AM - You Win!');
-    if (typeof returnToMainMenu === 'function') {
+    if (typeof triggerWinSequence === 'function') {
+      triggerWinSequence(() => {
+        if (typeof returnToMainMenu === 'function') {
+          returnToMainMenu(true);
+        }
+      });
+    } else if (typeof returnToMainMenu === 'function') {
       returnToMainMenu(true);
     }
   } else if (data.result === 'powerOut') {

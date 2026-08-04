@@ -115,6 +115,7 @@ const audioSources = {
     menuAmbience: 'audio/main menu ambience.mp3',
     error: 'audio/error.wav',
     musicBox: 'audio/music box.wav',
+    win: 'audio/win.mp3',
     randomsound1: 'audio/randomsound1.mp3',
     randomsound2: 'audio/randomsound2.wav',
     freddyLaugh1: 'audio/Laugh_Giggle_Girl_1d.wav',
@@ -638,6 +639,55 @@ function triggerJumpscare(reason) {
             showGameOverScreen();
         }, 3000);
     }, 2000);
+}
+
+let winSequenceTimeout1 = null;
+let winSequenceTimeout2 = null;
+
+function triggerWinSequence(callback) {
+    const winScreen = document.getElementById('winScreen');
+    const winDigit5 = document.getElementById('winDigit5');
+    const winDigit6 = document.getElementById('winDigit6');
+
+    if (winSequenceTimeout1) clearTimeout(winSequenceTimeout1);
+    if (winSequenceTimeout2) clearTimeout(winSequenceTimeout2);
+
+    if (!winScreen || !winDigit5 || !winDigit6) {
+        if (typeof callback === 'function') callback();
+        return;
+    }
+
+    stopSound('ambience');
+    stopSound('on_cam');
+    if (typeof stopPowerOutageSequence === 'function') {
+        stopPowerOutageSequence();
+    }
+
+    // Reset initial digit positions (5 in view, 6 below view)
+    winDigit5.style.transition = 'none';
+    winDigit6.style.transition = 'none';
+    winDigit5.style.transform = 'translateY(0%)';
+    winDigit6.style.transform = 'translateY(0%)';
+
+    void winDigit5.offsetHeight;
+
+    winScreen.style.display = 'flex';
+    playSound('win');
+
+    // Phase 1: Show 5 AM for 1.5 seconds, then animate 5 sliding up and 6 sliding in
+    winSequenceTimeout1 = setTimeout(() => {
+        winDigit5.style.transition = 'transform 1.8s cubic-bezier(0.4, 0, 0.2, 1)';
+        winDigit6.style.transition = 'transform 1.8s cubic-bezier(0.4, 0, 0.2, 1)';
+        winDigit5.style.transform = 'translateY(-100%)';
+        winDigit6.style.transform = 'translateY(-100%)';
+
+        // Phase 2: Hold 6 AM as children cheer (~7 seconds after shift, 8.5s total)
+        winSequenceTimeout2 = setTimeout(() => {
+            stopSound('win');
+            winScreen.style.display = 'none';
+            if (typeof callback === 'function') callback();
+        }, 7000);
+    }, 1500);
 }
 
 function updateButtonState(side, door, light) {
