@@ -122,7 +122,12 @@ const audioSources = {
     randomsound2: 'audio/randomsound2.wav',
     freddyLaugh1: 'audio/Laugh_Giggle_Girl_1d.wav',
     freddyLaugh2: 'audio/Laugh_Giggle_Girl_2d.wav',
-    freddyLaugh3: 'audio/Laugh_Giggle_Girl_8d.wav'
+    freddyLaugh3: 'audio/Laugh_Giggle_Girl_8d.wav',
+    mainMenu2: 'audio/main_menu1.wav',
+    oven1: 'audio/OVEN-DRAWE_GEN-HDF18122.wav',
+    oven2: 'audio/OVEN-DRA_1_GEN-HDF18119.wav',
+    oven3: 'audio/OVEN-DRA_2_GEN-HDF18120.wav',
+    oven4: 'audio/OVEN-DRA_7_GEN-HDF18121.wav'
 };
 
 const audio = {};
@@ -139,9 +144,23 @@ function ensureAudio(name) {
     sound.volume = 0.5;
     audio[name] = sound;
 
-    if (name === 'ambience' || name === 'menuAmbience' || name === 'on_cam') {
+    if (name === 'ambience' || name === 'on_cam') {
         sound.loop = true;
         sound.volume = 0.3;
+    }
+
+    if (name === 'menuAmbience') {
+        sound.loop = false;
+        sound.volume = 0.3;
+        sound.addEventListener('ended', () => {
+            sound.currentTime = 0;
+            sound.play().catch(() => { });
+            const menu2 = ensureAudio('mainMenu2');
+            if (menu2) {
+                menu2.currentTime = 0;
+                menu2.play().catch(() => { });
+            }
+        });
     }
 
     return sound;
@@ -159,6 +178,7 @@ function unlockAudio() {
     if (audioUnlocked) return;
     audioUnlocked = true;
     playSound('menuAmbience');
+    playSound('mainMenu2');
 }
 
 function playSound(name) {
@@ -168,7 +188,7 @@ function playSound(name) {
     try {
         sound.currentTime = 0;
         sound.volume = (name === 'ambience' || name === 'menuAmbience') ? 0.3 : 0.5;
-        sound.play().catch(() => {});
+        sound.play().catch(() => { });
     } catch (error) {
         console.warn('Audio play failed:', name, error);
     }
@@ -345,7 +365,7 @@ function updateCameraTexture(state) {
         if (fxStage === 1) imgSrc = '1C stage_1.png';
         else if (fxStage === 2) imgSrc = '1C stage_2.png';
         else if (fxStage === 3) imgSrc = '1C stage_3.png';
-        else imgSrc = '1C.png'; 
+        else imgSrc = '1C.png';
     }
     else if (cam === '2A') {
         if (bLoc === '2A') imgSrc = '2A bonnie.png';
@@ -841,6 +861,28 @@ function playCamGlitch() {
     }, 50);
 }
 
+const ovenSounds = ['oven1', 'oven2', 'oven3', 'oven4'];
+let currentOvenSound = null;
+
+function updateKitchenOvenSound(cam) {
+    if (cam === '6' && currentState && currentState.animatronics.chica.location === '6') {
+        // Pick a random oven sound and play it
+        stopKitchenOvenSound();
+        const rand = ovenSounds[Math.floor(Math.random() * ovenSounds.length)];
+        currentOvenSound = rand;
+        playSound(rand);
+    } else {
+        stopKitchenOvenSound();
+    }
+}
+
+function stopKitchenOvenSound() {
+    if (currentOvenSound) {
+        stopSound(currentOvenSound);
+        currentOvenSound = null;
+    }
+}
+
 function selectCamera(cam) {
     selectedCamera = cam;
 
@@ -871,6 +913,9 @@ function selectCamera(cam) {
     if (isCameraUp && currentState) {
         updateCameraTexture(currentState);
     }
+
+    // Kitchen oven sounds: play random oven sound when switching to cam 6 while Chica is in kitchen
+    updateKitchenOvenSound(cam);
 }
 
 let cameraAnimating = false;
@@ -1117,7 +1162,7 @@ function onServerState(state) {
             prevAnimLocations.chica !== a.chica.location ||
             prevAnimLocations.foxy !== a.foxy.location ||
             prevAnimLocations.foxyStage !== a.foxy.foxyStage) {
-            
+
             triggerCameraBlackout();
 
             if (state.cameraUp) {
@@ -1144,6 +1189,11 @@ function onServerState(state) {
         foxy: a.foxy.location,
         foxyStage: a.foxy.foxyStage
     };
+
+    // Stop kitchen oven sounds when Chica leaves the kitchen
+    if (a.chica.location !== '6') {
+        stopKitchenOvenSound();
+    }
 
     const aiDisplay = document.getElementById('aiDisplay');
     if (aiDisplay) {
@@ -1365,8 +1415,8 @@ function triggerPowerOutage() {
         const flickerInterval = setInterval(() => {
             if (!isPowerOutage) return;
             const showFreddy = Math.random() < 0.5;
-            office.style.backgroundImage = showFreddy 
-                ? "url('textures/office/freddy music box.png')" 
+            office.style.backgroundImage = showFreddy
+                ? "url('textures/office/freddy music box.png')"
                 : "url('textures/office/power out.png')";
         }, 120);
         powerOutageIntervals.push(flickerInterval);
@@ -1508,7 +1558,7 @@ function renderMainMenu() {
 
     const btnNight6 = document.getElementById('btnNight6');
     const btnCustomNight = document.getElementById('btnCustomNight');
-    
+
     const unlockedNight = parseInt(localStorage.getItem('fnaf_saved_night') || '1', 10);
 
     if (btnNight6) btnNight6.style.display = unlockedNight >= 6 ? 'block' : 'none';
@@ -1603,6 +1653,7 @@ function showMainMenu() {
     cameraAnimation.style.display = 'none';
     stopSound('ambience');
     playSound('menuAmbience');
+    playSound('mainMenu2');
     startMenuTwitch();
 }
 
@@ -1615,6 +1666,7 @@ function hideMainMenu() {
     document.getElementById('timeDisplayContainer').style.display = 'flex';
     document.getElementById('aiDisplay').style.display = 'block';
     stopSound('menuAmbience');
+    stopSound('mainMenu2');
 }
 
 function getNightIntroFilename(night) {
@@ -1633,11 +1685,11 @@ function getNightIntroFilename(night) {
 function showNightIntro(night, callback) {
     const nightIntroScreen = document.getElementById('nightIntroScreen');
     const nightIntroImg = document.getElementById('nightIntroImg');
-    
+
     if (nightIntroScreen && nightIntroImg) {
         nightIntroImg.src = 'textures/main menu/' + getNightIntroFilename(night);
         nightIntroScreen.style.display = 'flex';
-        
+
         setTimeout(() => {
             nightIntroScreen.style.display = 'none';
             playSound('ambience');
@@ -1698,13 +1750,13 @@ function triggerNewStart(callback) {
         newStartScreen.style.display = 'flex';
         newStartScreen.classList.remove('fade-out');
         newStartScreen.classList.add('fade-in');
-        
+
         let proceedCalled = false;
         function proceed() {
             if (proceedCalled) return;
             proceedCalled = true;
             newStartScreen.removeEventListener('click', proceed);
-            
+
             newStartScreen.classList.remove('fade-in');
             newStartScreen.classList.add('fade-out');
             setTimeout(() => {
