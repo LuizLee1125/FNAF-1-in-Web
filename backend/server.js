@@ -108,6 +108,7 @@ function createRoom(roomId, night, customAI) {
     players: [],
     doors: { left: false, right: false },
     lights: { left: false, right: false },
+    jammed: { left: false, right: false },
     cameraUp: false,
     animatronics: {
       freddy: { location: '1A', ai: initialAI.freddy, movementTimer: 0 },
@@ -133,6 +134,7 @@ function getAIForHour(room, hour) {
 }
 
 function attemptMove(room, name) {
+  if (room.power <= 0) return;
   const state = room.animatronics[name];
   const config = MOVEMENT_CONFIG[name];
 
@@ -210,6 +212,19 @@ function attemptMove(room, name) {
   }
 }
 
+function getRoomStatePayload(room) {
+  return {
+    hour: room.hour,
+    power: Math.floor(room.power),
+    usage: room.usage,
+    animatronics: room.animatronics,
+    doors: room.doors,
+    lights: room.lights,
+    jammed: room.jammed || { left: false, right: false },
+    cameraUp: room.cameraUp
+  };
+}
+
 function gameTick(roomId) {
   const room = rooms.get(roomId);
   if (!room || room.state !== 'playing') return;
@@ -250,20 +265,20 @@ function gameTick(roomId) {
   room.usage = usage;
 
   room.power = Math.max(0, room.power - POWER_DRAIN_BASE * usage);
-  if (room.power <= 0 && !room.powerOutTriggered) {
-    room.powerOutTriggered = true;
-    io.to(roomId).emit('gameEnd', { result: 'powerOut' });
+  if (room.power <= 0) {
+    room.doors.left = false;
+    room.doors.right = false;
+    room.lights.left = false;
+    room.lights.right = false;
+    room.cameraUp = false;
+    room.usage = 1;
+    if (!room.powerOutTriggered) {
+      room.powerOutTriggered = true;
+      io.to(roomId).emit('gameEnd', { result: 'powerOut' });
+    }
   }
 
-  io.to(roomId).emit('stateUpdate', {
-    hour: room.hour,
-    power: Math.floor(room.power),
-    usage: room.usage,
-    animatronics: room.animatronics,
-    doors: room.doors,
-    lights: room.lights,
-    cameraUp: room.cameraUp
-  });
+  io.to(roomId).emit('stateUpdate', getRoomStatePayload(room));
 }
 
 function startRoomLoop(roomId) {
@@ -302,15 +317,7 @@ io.on('connection', (socket) => {
     socket.join(roomId);
     socket.roomId = roomId;
 
-    socket.emit('stateUpdate', {
-      hour: room.hour,
-      power: Math.floor(room.power),
-      usage: room.usage,
-      animatronics: room.animatronics,
-      doors: room.doors,
-      lights: room.lights,
-      cameraUp: room.cameraUp
-    });
+    socket.emit('stateUpdate', getRoomStatePayload(room));
 
     if (room.state === 'waiting') {
       room.state = 'playing';
@@ -322,12 +329,16 @@ io.on('connection', (socket) => {
 
   socket.on('playerAction', (action) => {
     const room = rooms.get(socket.roomId);
-    if (!room || room.state !== 'playing') return;
+    if (!room || room.state !== 'playing' || room.power <= 0) return;
 
     if (action.type === 'toggleDoor') {
+      if (room.jammed?.[action.side]) {
+        socket.emit('actionError', { side: action.side, sound: 'error', reason: 'jammed' });
+        return;
+      }
       room.doors[action.side] = !room.doors[action.side];
     } else if (action.type === 'toggleLight') {
-      if (room.jammed[action.side]) {
+      if (room.jammed?.[action.side]) {
         socket.emit('actionError', { side: action.side, sound: 'error', reason: 'jammed' });
         return;
       }
@@ -351,15 +362,7 @@ io.on('connection', (socket) => {
     if (room.cameraUp) usage++;
     room.usage = usage;
 
-    io.to(socket.roomId).emit('stateUpdate', {
-      hour: room.hour,
-      power: Math.floor(room.power),
-      usage: room.usage,
-      animatronics: room.animatronics,
-      doors: room.doors,
-      lights: room.lights,
-      cameraUp: room.cameraUp
-    });
+    io.to(socket.roomId).emit('stateUpdate', getRoomStatePayload(room));
   });
 
   socket.on('disconnect', () => {

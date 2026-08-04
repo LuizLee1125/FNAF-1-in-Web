@@ -847,6 +847,40 @@ function onServerState(state) {
     const leftDoor = document.getElementById('leftDoor');
     const rightDoor = document.getElementById('rightDoor');
 
+    if (isPowerOutage || state.power <= 0) {
+        if (leftDoor) leftDoor.style.display = 'none';
+        if (rightDoor) rightDoor.style.display = 'none';
+        prevDoorState = { left: false, right: false };
+
+        const leftButtons = document.getElementById('leftButtons');
+        const rightButtons = document.getElementById('rightButtons');
+        if (leftButtons) leftButtons.style.display = 'none';
+        if (rightButtons) rightButtons.style.display = 'none';
+
+        const powerUsage = document.getElementById('powerUsage');
+        if (powerUsage) powerUsage.style.display = 'none';
+
+        isCameraUp = false;
+        if (cameraOverlay) cameraOverlay.style.display = 'none';
+        if (cameraAnimation) cameraAnimation.style.display = 'none';
+        const cameraContainer = document.getElementById('cameraContainer');
+        if (cameraContainer) cameraContainer.style.display = 'none';
+        canToggleCamera = false;
+
+        const timeDisplayContainer = document.getElementById('timeDisplayContainer');
+        const aiDisplay = document.getElementById('aiDisplay');
+
+        if (powerOutagePhase === 3) {
+            if (timeDisplayContainer) timeDisplayContainer.style.display = 'none';
+            if (aiDisplay) aiDisplay.style.display = 'none';
+            office.style.backgroundImage = 'none';
+            office.style.backgroundColor = '#000';
+        } else {
+            if (timeDisplayContainer) timeDisplayContainer.style.display = 'flex';
+        }
+        return;
+    }
+
     if (prevDoorState.left !== null && prevDoorState.left !== state.doors.left) {
         updateDoorTextureAnimated(leftDoor, 'left', state.doors.left);
         prevDoorState.left = state.doors.left;
@@ -881,10 +915,6 @@ function onServerState(state) {
 
     const nightDisplay = document.getElementById('nightDisplay');
     if (nightDisplay) nightDisplay.textContent = 'Night ' + currentNight;
-
-    if (state.power <= 0) {
-        office.style.backgroundImage = "url('textures/office/power out.png')";
-    }
 }
 
 function frame() {
@@ -905,6 +935,7 @@ function frame() {
 }
 
 let isPowerOutage = false;
+let powerOutagePhase = 0;
 let powerOutageTimeouts = [];
 let powerOutageIntervals = [];
 let scaredAtDoor = { left: false, right: false };
@@ -938,19 +969,26 @@ function clearPowerOutageTimers() {
 
 function stopPowerOutageSequence() {
     isPowerOutage = false;
+    powerOutagePhase = 0;
     clearPowerOutageTimers();
     stopSound('musicBox');
     stopSound('powerdown');
-    if (office) office.style.backgroundColor = '';
+    if (office) {
+        office.style.backgroundColor = '';
+        office.style.backgroundImage = '';
+    }
     const powerUsage = document.getElementById('powerUsage');
     const timeDisplayContainer = document.getElementById('timeDisplayContainer');
+    const aiDisplay = document.getElementById('aiDisplay');
     if (powerUsage) powerUsage.style.display = 'flex';
     if (timeDisplayContainer) timeDisplayContainer.style.display = 'flex';
+    if (aiDisplay) aiDisplay.style.display = 'none';
 }
 
 function triggerPowerOutage() {
     if (isPowerOutage) return;
     isPowerOutage = true;
+    powerOutagePhase = 1;
     clearPowerOutageTimers();
 
     stopSound('ambience');
@@ -966,7 +1004,7 @@ function triggerPowerOutage() {
     const powerUsage = document.getElementById('powerUsage');
     if (powerUsage) powerUsage.style.display = 'none';
 
-    // Close lights and flip open doors visually
+    // Open doors visually
     const leftDoor = document.getElementById('leftDoor');
     const rightDoor = document.getElementById('rightDoor');
     if (leftDoor) leftDoor.style.display = 'none';
@@ -975,8 +1013,8 @@ function triggerPowerOutage() {
 
     // Force camera down & hide hover bar + disable flipping open
     isCameraUp = false;
-    cameraOverlay.style.display = 'none';
-    cameraAnimation.style.display = 'none';
+    if (cameraOverlay) cameraOverlay.style.display = 'none';
+    if (cameraAnimation) cameraAnimation.style.display = 'none';
     const cameraContainer = document.getElementById('cameraContainer');
     if (cameraContainer) cameraContainer.style.display = 'none';
     canToggleCamera = false;
@@ -991,8 +1029,6 @@ function triggerPowerOutage() {
     office.style.display = 'block';
     office.style.backgroundImage = "url('textures/office/power out.png')";
 
-    let currentPhase = 1;
-
     // Phase 1: Wait up to 20 seconds before Freddy appears. Every 5s: 20% chance to move to Phase 2 earlier.
     let phase1Elapsed = 0;
     const phase1Interval = setInterval(() => {
@@ -1006,8 +1042,8 @@ function triggerPowerOutage() {
     powerOutageIntervals.push(phase1Interval);
 
     function startPhase2() {
-        if (!isPowerOutage || currentPhase >= 2) return;
-        currentPhase = 2;
+        if (!isPowerOutage || powerOutagePhase >= 2) return;
+        powerOutagePhase = 2;
 
         // Play music box audio
         playSound('musicBox');
@@ -1026,7 +1062,7 @@ function triggerPowerOutage() {
         const phase2Interval = setInterval(() => {
             if (!isPowerOutage) return;
             phase2Elapsed += 5;
-            if (Math.random() < 0.2 || phase2Elapsed >= 60) {
+            if (Math.random() < 0.2 || phase2Elapsed >= 20) {
                 clearInterval(phase2Interval);
                 clearInterval(flickerInterval);
                 startPhase3();
@@ -1036,24 +1072,28 @@ function triggerPowerOutage() {
     }
 
     function startPhase3() {
-        if (!isPowerOutage || currentPhase >= 3) return;
-        currentPhase = 3;
+        if (!isPowerOutage || powerOutagePhase >= 3) return;
+        powerOutagePhase = 3;
 
         stopSound('musicBox');
 
         // Hide all text overlays for pure black screen in Phase 3
         const timeDisplayContainer = document.getElementById('timeDisplayContainer');
         if (timeDisplayContainer) timeDisplayContainer.style.display = 'none';
+        const aiDisplay = document.getElementById('aiDisplay');
+        if (aiDisplay) aiDisplay.style.display = 'none';
         if (powerUsage) powerUsage.style.display = 'none';
 
-        // Actual black screen background
+        // Actual black screen background (complete darkness)
         office.style.backgroundImage = 'none';
         office.style.backgroundColor = '#000';
 
-        // Every 2s: 20% chance to jumpscare
+        let phase3Elapsed = 0;
+        // Every 2s: 20% chance to jumpscare (or max 20 seconds)
         const phase3Interval = setInterval(() => {
             if (!isPowerOutage) return;
-            if (Math.random() < 0.2) {
+            phase3Elapsed += 2;
+            if (Math.random() < 0.2 || phase3Elapsed >= 20) {
                 clearInterval(phase3Interval);
                 stopPowerOutageSequence();
                 triggerJumpscare('freddy2');
@@ -1064,11 +1104,6 @@ function triggerPowerOutage() {
         }, 2000);
         powerOutageIntervals.push(phase3Interval);
     }
-}
-
-function triggerJumpscare(reason) {
-    updateJumpscare(reason);
-    playSound('jumpscare');
 }
 
 // Progression Save System
