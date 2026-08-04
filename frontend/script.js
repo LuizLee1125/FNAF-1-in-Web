@@ -116,6 +116,8 @@ const audioSources = {
     error: 'audio/error.wav',
     musicBox: 'audio/music box.wav',
     win: 'audio/win.mp3',
+    run: 'audio/run.wav',
+    knock2: 'audio/knock2.wav',
     randomsound1: 'audio/randomsound1.mp3',
     randomsound2: 'audio/randomsound2.wav',
     freddyLaugh1: 'audio/Laugh_Giggle_Girl_1d.wav',
@@ -285,7 +287,10 @@ function updateDoorTextureAnimated(doorEl, side, isClosed) {
     }, 16);
 }
 
+let isFoxySprinting = false;
+
 function updateCameraTexture(state) {
+    if (isFoxySprinting) return;
     if (!state || !state.cameraUp) {
         cameraFeed.style.display = 'none';
         return;
@@ -681,13 +686,82 @@ function triggerWinSequence(callback) {
         winDigit5.style.transform = 'translateY(-100%)';
         winDigit6.style.transform = 'translateY(-100%)';
 
-        // Phase 2: Hold 6 AM as children cheer (~7 seconds after shift, 8.5s total)
         winSequenceTimeout2 = setTimeout(() => {
             stopSound('win');
             winScreen.style.display = 'none';
             if (typeof callback === 'function') callback();
         }, 7000);
     }, 1500);
+}
+
+const foxyRunFrames = [
+    'textures/camera/foxy run/240.png',
+    'textures/camera/foxy run/241.png',
+    'textures/camera/foxy run/244.png',
+    'textures/camera/foxy run/245.png',
+    'textures/camera/foxy run/246.png',
+    'textures/camera/foxy run/247.png',
+    'textures/camera/foxy run/248.png',
+    'textures/camera/foxy run/250.png',
+    'textures/camera/foxy run/280.png',
+    'textures/camera/foxy run/282.png',
+    'textures/camera/foxy run/283.png',
+    'textures/camera/foxy run/284.png',
+    'textures/camera/foxy run/285.png',
+    'textures/camera/foxy run/286.png',
+    'textures/camera/foxy run/287.png',
+    'textures/camera/foxy run/288.png',
+    'textures/camera/foxy run/289.png',
+    'textures/camera/foxy run/290.png',
+    'textures/camera/foxy run/292.png',
+    'textures/camera/foxy run/302.png',
+    'textures/camera/foxy run/306.png',
+    'textures/camera/foxy run/327.png',
+    'textures/camera/foxy run/329.png',
+    'textures/camera/foxy run/330.png',
+    'textures/camera/foxy run/331.png',
+    'textures/camera/foxy run/332.png',
+    'textures/camera/foxy run/333.png',
+    'textures/camera/foxy run/334.png',
+    'textures/camera/foxy run/335.png',
+    'textures/camera/foxy run/336.png',
+    'textures/camera/foxy run/337.png'
+];
+
+let foxyRunInterval = null;
+
+function triggerFoxyRun() {
+    isFoxySprinting = true;
+    playSound('run');
+
+    const cameraFeed = document.getElementById('cameraFeed');
+    const cameraOverlay = document.getElementById('cameraOverlay');
+
+    if (cameraFeed) cameraFeed.style.display = 'block';
+    if (cameraOverlay) cameraOverlay.style.display = 'block';
+
+    let frameIdx = 0;
+    if (foxyRunInterval) clearInterval(foxyRunInterval);
+
+    foxyRunInterval = setInterval(() => {
+        if (frameIdx < foxyRunFrames.length) {
+            if (cameraFeed) {
+                cameraFeed.style.display = 'block';
+                cameraFeed.src = foxyRunFrames[frameIdx];
+            }
+            frameIdx++;
+        } else {
+            clearInterval(foxyRunInterval);
+            foxyRunInterval = null;
+            isFoxySprinting = false;
+
+            if (typeof forceCloseCamera === 'function') {
+                forceCloseCamera();
+            } else if (typeof closeCamera === 'function') {
+                closeCamera();
+            }
+        }
+    }, 28);
 }
 
 function updateButtonState(side, door, light) {
@@ -802,6 +876,7 @@ let mouseInOverlay = false;
 
 function openCamera() {
     if (cameraAnimating || isCameraUp) return;
+    isFoxySprinting = false;
     isCameraUp = true;
     cameraHovered = true;
 
@@ -834,6 +909,9 @@ function openCamera() {
             cameraAnimation.style.display = 'none';
             cameraOverlay.style.display = 'block';
             cameraAnimating = false;
+            if (currentState) {
+                updateCameraTexture(currentState);
+            }
         }
     }, 20);
 }
@@ -876,6 +954,71 @@ function closeCamera() {
             sendAction('setCamera', null, false);
         }
     }, 20);
+}
+
+function forceCloseCamera() {
+    isCameraUp = false;
+    cameraHovered = false;
+    canToggleCamera = false;
+
+    if (foxyRunInterval) {
+        clearInterval(foxyRunInterval);
+        foxyRunInterval = null;
+    }
+    isFoxySprinting = false;
+
+    if (cameraCloseTimeout) {
+        clearTimeout(cameraCloseTimeout);
+        cameraCloseTimeout = null;
+    }
+
+    if (cameraAnimInterval) {
+        clearInterval(cameraAnimInterval);
+        cameraAnimInterval = null;
+    }
+
+    mouseInOverlay = false;
+    stopSound('on_cam');
+    playSound('put_down');
+
+    cameraAnimating = true;
+    if (cameraFeed) cameraFeed.style.display = 'none';
+    if (cameraOverlay) cameraOverlay.style.display = 'none';
+
+    if (cameraAnimation) {
+        cameraAnimation.style.display = 'block';
+        cameraAnimFrame = cameraAnimFrames.length - 1;
+
+        cameraAnimInterval = setInterval(() => {
+            if (cameraAnimFrame >= 0) {
+                cameraAnimation.src = cameraAnimFrames[cameraAnimFrame];
+                cameraAnimFrame--;
+            } else {
+                clearInterval(cameraAnimInterval);
+                cameraAnimInterval = null;
+                cameraAnimation.style.display = 'none';
+                cameraAnimating = false;
+                if (currentState) {
+                    applyCameraBackground();
+                    updateCameraTexture(currentState);
+                }
+                setTimeout(() => {
+                    canToggleCamera = true;
+                }, 300);
+            }
+        }, 18);
+    } else {
+        cameraAnimating = false;
+        canToggleCamera = true;
+        if (currentState) {
+            applyCameraBackground();
+            updateCameraTexture(currentState);
+        }
+    }
+
+    if (typeof sendAction === 'function') {
+        sendAction('setCamera', null, false);
+    }
 }
 
 let canToggleCamera = true;
@@ -923,6 +1066,10 @@ let prevAnimLocations = { freddy: null, bonnie: null, chica: null, foxy: null, f
 function onServerState(state) {
     if (!state) return;
     currentState = state;
+
+    if (state.cameraUp === false && isCameraUp && !cameraAnimating && !isFoxySprinting) {
+        forceCloseCamera();
+    }
 
     checkVariants(state);
 

@@ -94,6 +94,14 @@ const AI_SCHEDULES = {
 const rooms = new Map();
 const roomIntervals = new Map();
 
+function getFoxyKnockDrain(knockCount) {
+  if (knockCount <= 1) return 1;
+  if (knockCount === 2) return 6;
+  if (knockCount === 3) return 11;
+  if (knockCount === 4) return 16;
+  return 21; // 5th or more knock
+}
+
 function createRoom(roomId, night, customAI) {
   const initialAI = customAI || getAIForHour({ night: night || 1 }, 0);
   const now = Date.now();
@@ -118,7 +126,7 @@ function createRoom(roomId, night, customAI) {
       freddy: { location: '1A', ai: initialAI.freddy, movementTimerMs: 0, inOffice: false },
       bonnie: { location: '1A', ai: initialAI.bonnie, movementTimerMs: 0, inOffice: false, readyToJumpscare: false },
       chica: { location: '1A', ai: initialAI.chica, movementTimerMs: 0, inOffice: false, readyToJumpscare: false },
-      foxy: { location: '1C', ai: initialAI.foxy, movementTimerMs: 0, foxyStage: 0, stallTimerMs: 0 }
+      foxy: { location: '1C', ai: initialAI.foxy, movementTimerMs: 0, foxyStage: 0, stallTimerMs: 0, sprintTimerMs: 0, sprinting: false, sprintWindowMs: 0, knockCount: 0 }
     }
   };
 }
@@ -167,21 +175,15 @@ function attemptMove(room, name) {
     }
   }
 
-  // Foxy stage mechanics
+  // Foxy stage mechanics: Stage 0 (Cove closed) -> Stage 1 (Peeking) -> Stage 2 (Outside) -> Stage 3 (Empty cove)
   if (name === 'foxy') {
-    if (state.location === '1C') {
+    if (state.foxyStage < 3) {
       state.foxyStage++;
-      if (state.foxyStage > 3) {
-        state.location = '2A'; // Sprinting down West Hall
-      }
-    } else if (state.location === '2A') {
-      if (!room.doors.left) {
-        room.state = 'gameover';
-        io.to(room.id).emit('gameOver', { reason: 'foxy' });
-      } else {
-        state.location = '1C'; // Reset
-        state.foxyStage = 0;
-        room.power = Math.max(0, room.power - 5); // Foxy door bang power drain
+      if (state.foxyStage === 3) {
+        state.location = '1C'; // Empty cove
+        state.sprintTimerMs = 30000; // 30 seconds wait timer
+        state.sprinting = false;
+        state.sprintWindowMs = 0;
       }
     }
     return;
@@ -280,7 +282,7 @@ function gameTick(roomId) {
     }
   }
 
-  // Foxy camera stall
+  // Foxy camera stall & Stage 4 timer handling
   const foxy = room.animatronics.foxy;
   if (room.cameraUp) {
     if (foxy.stallTimerMs <= 0) {
@@ -288,12 +290,59 @@ function gameTick(roomId) {
     }
   }
 
+  if (foxy.foxyStage === 3) {
+    if (foxy.sprinting) {
+      if (foxy.sprintWindowMs > 0) {
+        foxy.sprintWindowMs -= deltaMs;
+        if (foxy.sprintWindowMs <= 0) {
+          if (!room.doors.left) {
+            room.state = 'gameover';
+            io.to(roomId).emit('gameOver', { reason: 'foxy' });
+          } else {
+            foxy.knockCount++;
+            const knockDrain = getFoxyKnockDrain(foxy.knockCount);
+            room.power = Math.max(0, room.power - knockDrain);
+            foxy.foxyStage = 0;
+            foxy.sprinting = false;
+            foxy.sprintTimerMs = 0;
+            foxy.sprintWindowMs = 0;
+            io.to(roomId).emit('foxyKnock', { knockCount: foxy.knockCount, powerDrained: knockDrain });
+            io.to(roomId).emit('stateUpdate', getRoomStatePayload(room));
+          }
+        }
+      }
+    } else if (foxy.sprintTimerMs > 0) {
+      foxy.sprintTimerMs -= deltaMs;
+      if (foxy.sprintTimerMs <= 0) {
+        if (room.cameraUp) {
+          room.cameraUp = false;
+        }
+        if (!room.doors.left) {
+          room.state = 'gameover';
+          io.to(roomId).emit('gameOver', { reason: 'foxy' });
+        } else {
+          foxy.knockCount++;
+          const knockDrain = getFoxyKnockDrain(foxy.knockCount);
+          room.power = Math.max(0, room.power - knockDrain);
+          foxy.foxyStage = 0;
+          foxy.sprinting = false;
+          foxy.sprintTimerMs = 0;
+          foxy.sprintWindowMs = 0;
+          io.to(roomId).emit('foxyKnock', { knockCount: foxy.knockCount, powerDrained: knockDrain });
+          io.to(roomId).emit('stateUpdate', getRoomStatePayload(room));
+        }
+      }
+    }
+  }
+
   // Animatronics movement timers
   for (const [name, config] of Object.entries(MOVEMENT_CONFIG)) {
     const anim = room.animatronics[name];
 
-    if (name === 'foxy' && anim.stallTimerMs > 0) {
-      anim.stallTimerMs = Math.max(0, anim.stallTimerMs - deltaMs);
+    if (name === 'foxy' && (anim.stallTimerMs > 0 || anim.foxyStage === 3)) {
+      if (anim.stallTimerMs > 0) {
+        anim.stallTimerMs = Math.max(0, anim.stallTimerMs - deltaMs);
+      }
       anim.movementTimerMs = 0;
       continue;
     }
@@ -358,25 +407,19 @@ io.on('connection', (socket) => {
     let room = rooms.get(roomId);
 
     if (!room || room.state === 'gameover' || room.state === 'won') {
-      stopRoomLoop(roomId);
       room = createRoom(roomId, night, customAI);
       rooms.set(roomId, room);
-    } else {
-      if (room.state === 'waiting') {
-        room.night = night;
-        if (customAI) room.customAI = customAI;
-      }
     }
 
     if (!room.players.includes(socket.id)) {
       room.players.push(socket.id);
     }
-    socket.join(roomId);
     socket.roomId = roomId;
+    socket.join(roomId);
 
     socket.emit('stateUpdate', getRoomStatePayload(room));
 
-    if (room.state === 'waiting') {
+    if (room.players.length === 1 && room.state !== 'playing') {
       room.state = 'playing';
       startRoomLoop(roomId);
     } else if (room.state === 'playing' && !roomIntervals.has(roomId)) {
@@ -384,12 +427,20 @@ io.on('connection', (socket) => {
     }
   });
 
+  function checkFoxySprintTrigger(room) {
+    const foxy = room.animatronics.foxy;
+    if (foxy && foxy.foxyStage === 3 && !foxy.sprinting && room.cameraUp && room.selectedCamera === '2A') {
+      foxy.sprinting = true;
+      foxy.sprintWindowMs = 4000; // 1s sprint + 3s door close window
+      io.to(room.id).emit('foxySprint');
+    }
+  }
+
   socket.on('playerAction', (action) => {
     const room = rooms.get(socket.roomId);
     if (!room || room.state !== 'playing' || room.power <= 0) return;
 
     // Freddy office jumpscare condition 5.1 & 5.2:
-    // Any interaction immediately triggers Freddy's jumpscare without executing the action
     if (room.animatronics.freddy.inOffice) {
       if (['toggleDoor', 'toggleLight', 'toggleCamera', 'setCamera', 'selectCamera'].includes(action.type)) {
         room.state = 'gameover';
@@ -400,6 +451,7 @@ io.on('connection', (socket) => {
 
     if (action.type === 'selectCamera') {
       room.selectedCamera = action.value || '1A';
+      checkFoxySprintTrigger(room);
       io.to(socket.roomId).emit('stateUpdate', getRoomStatePayload(room));
       return;
     }
@@ -430,9 +482,7 @@ io.on('connection', (socket) => {
         newCameraUp = !!action.value;
       }
 
-      // Bonnie & Chica jumpscare condition 4:
-      // Flipping up camera sets readyToJumpscare = true.
-      // Flipping down camera when readyToJumpscare is true triggers jumpscare.
+      // Bonnie & Chica jumpscare condition 4
       for (const name of ['bonnie', 'chica']) {
         const anim = room.animatronics[name];
         if (anim.inOffice) {
@@ -451,6 +501,7 @@ io.on('connection', (socket) => {
       if (room.cameraUp && room.animatronics.foxy.stallTimerMs <= 0) {
         room.animatronics.foxy.stallTimerMs = Math.floor((Math.random() * 14 + 3) * 1000);
       }
+      checkFoxySprintTrigger(room);
     }
 
     let usage = 1;

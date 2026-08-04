@@ -71,12 +71,28 @@ socket.on('gameOver', (data) => {
   }
 });
 
+socket.on('foxySprint', () => {
+  if (typeof triggerFoxyRun === 'function') {
+    triggerFoxyRun();
+  } else if (typeof playSound === 'function') {
+    playSound('run');
+  }
+});
+
+socket.on('foxyKnock', (data) => {
+  if (typeof playSound === 'function') {
+    playSound('knock2');
+  }
+});
+
 function sendAction(type, side, value) {
   if (!gameActive) return;
   socket.emit('playerAction', { type, side, value });
 }
 
 function handleButtonClick(e, side) {
+  if (typeof isCameraUp !== 'undefined' && isCameraUp) return;
+
   const btn = e.currentTarget;
   const rect = btn.getBoundingClientRect();
   const clickY = e.clientY - rect.top;
