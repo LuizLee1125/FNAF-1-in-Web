@@ -14,8 +14,15 @@ socket.on('stateUpdate', (state) => {
   gameActive = true;
   if (state) {
     if (state.lights) {
+      const prevLightOn = lightState.left || lightState.right;
       lightState.left = state.lights.left;
       lightState.right = state.lights.right;
+      const currentLightOn = lightState.left || lightState.right;
+      if (prevLightOn && !currentLightOn) {
+        if (typeof stopSound === 'function') {
+          stopSound('lightClick');
+        }
+      }
     }
     if (state.jammed) {
       jammedState.left = state.jammed.left;

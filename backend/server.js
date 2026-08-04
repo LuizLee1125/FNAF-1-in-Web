@@ -113,10 +113,11 @@ function createRoom(roomId, night, customAI) {
     lights: { left: false, right: false },
     jammed: { left: false, right: false },
     cameraUp: false,
+    selectedCamera: '1A',
     animatronics: {
-      freddy: { location: '1A', ai: initialAI.freddy, movementTimerMs: 0 },
-      bonnie: { location: '1A', ai: initialAI.bonnie, movementTimerMs: 0 },
-      chica: { location: '1A', ai: initialAI.chica, movementTimerMs: 0 },
+      freddy: { location: '1A', ai: initialAI.freddy, movementTimerMs: 0, inOffice: false },
+      bonnie: { location: '1A', ai: initialAI.bonnie, movementTimerMs: 0, inOffice: false, readyToJumpscare: false },
+      chica: { location: '1A', ai: initialAI.chica, movementTimerMs: 0, inOffice: false, readyToJumpscare: false },
       foxy: { location: '1C', ai: initialAI.foxy, movementTimerMs: 0, foxyStage: 0, stallTimerMs: 0 }
     }
   };
@@ -142,6 +143,9 @@ function attemptMove(room, name) {
   const config = MOVEMENT_CONFIG[name];
 
   if (state.ai <= 0) return;
+
+  // Animatronics already in office stay in office
+  if (state.location === 'office' || state.inOffice) return;
 
   // Foxy camera stall check
   if (name === 'foxy' && (room.cameraUp || state.stallTimerMs > 0)) {
@@ -185,11 +189,15 @@ function attemptMove(room, name) {
 
   // Freddy at 4B corner
   if (name === 'freddy' && state.location === '4B') {
-    if (!room.doors.right) {
-      room.state = 'gameover';
-      io.to(room.id).emit('gameOver', { reason: 'freddy' });
+    if (room.doors.right) {
+      state.location = '4A'; // Retreat if right door is closed
+    } else if (room.selectedCamera === '4B') {
+      // Condition 3: Player looking at camera 4B or 4B was selected -> Freddy cannot enter office
+      return;
     } else {
-      state.location = '4A'; // Retreat if door is closed
+      // Enter office!
+      state.location = 'office';
+      state.inOffice = true;
     }
     return;
   }
@@ -197,8 +205,12 @@ function attemptMove(room, name) {
   // Bonnie at Left Door
   if (name === 'bonnie' && state.location === 'office_door_left') {
     if (!room.doors.left) {
-      room.state = 'gameover';
-      io.to(room.id).emit('gameOver', { reason: 'bonnie' });
+      // Enter office & jam left buttons and turn off left light
+      state.location = 'office';
+      state.inOffice = true;
+      state.readyToJumpscare = room.cameraUp;
+      room.jammed.left = true;
+      room.lights.left = false;
     } else {
       state.location = '1B'; // Retreat to Dining Area if blocked
     }
@@ -208,8 +220,12 @@ function attemptMove(room, name) {
   // Chica at Right Door
   if (name === 'chica' && state.location === 'office_door_right') {
     if (!room.doors.right) {
-      room.state = 'gameover';
-      io.to(room.id).emit('gameOver', { reason: 'chica' });
+      // Enter office & jam right buttons and turn off right light
+      state.location = 'office';
+      state.inOffice = true;
+      state.readyToJumpscare = room.cameraUp;
+      room.jammed.right = true;
+      room.lights.right = false;
     } else {
       state.location = '1B'; // Retreat to Dining Area if blocked
     }
@@ -372,6 +388,22 @@ io.on('connection', (socket) => {
     const room = rooms.get(socket.roomId);
     if (!room || room.state !== 'playing' || room.power <= 0) return;
 
+    // Freddy office jumpscare condition 5.1 & 5.2:
+    // Any interaction immediately triggers Freddy's jumpscare without executing the action
+    if (room.animatronics.freddy.inOffice) {
+      if (['toggleDoor', 'toggleLight', 'toggleCamera', 'setCamera', 'selectCamera'].includes(action.type)) {
+        room.state = 'gameover';
+        io.to(socket.roomId).emit('gameOver', { reason: 'freddy' });
+        return;
+      }
+    }
+
+    if (action.type === 'selectCamera') {
+      room.selectedCamera = action.value || '1A';
+      io.to(socket.roomId).emit('stateUpdate', getRoomStatePayload(room));
+      return;
+    }
+
     if (action.type === 'toggleDoor') {
       if (room.jammed?.[action.side]) {
         socket.emit('actionError', { side: action.side, sound: 'error', reason: 'jammed' });
@@ -389,13 +421,33 @@ io.on('connection', (socket) => {
         const otherSide = action.side === 'left' ? 'right' : 'left';
         room.lights[otherSide] = false;
       }
-    } else if (action.type === 'toggleCamera') {
-      room.cameraUp = !room.cameraUp;
-      if (room.cameraUp && room.animatronics.foxy.stallTimerMs <= 0) {
-        room.animatronics.foxy.stallTimerMs = Math.floor((Math.random() * 14 + 3) * 1000);
+    } else if (action.type === 'toggleCamera' || action.type === 'setCamera') {
+      const prevCameraUp = room.cameraUp;
+      let newCameraUp = prevCameraUp;
+      if (action.type === 'toggleCamera') {
+        newCameraUp = !prevCameraUp;
+      } else if (action.type === 'setCamera') {
+        newCameraUp = !!action.value;
       }
-    } else if (action.type === 'setCamera') {
-      room.cameraUp = !!action.value;
+
+      // Bonnie & Chica jumpscare condition 4:
+      // Flipping up camera sets readyToJumpscare = true.
+      // Flipping down camera when readyToJumpscare is true triggers jumpscare.
+      for (const name of ['bonnie', 'chica']) {
+        const anim = room.animatronics[name];
+        if (anim.inOffice) {
+          if (newCameraUp) {
+            anim.readyToJumpscare = true;
+          } else if (!newCameraUp && anim.readyToJumpscare) {
+            room.cameraUp = false;
+            room.state = 'gameover';
+            io.to(socket.roomId).emit('gameOver', { reason: name });
+            return;
+          }
+        }
+      }
+
+      room.cameraUp = newCameraUp;
       if (room.cameraUp && room.animatronics.foxy.stallTimerMs <= 0) {
         room.animatronics.foxy.stallTimerMs = Math.floor((Math.random() * 14 + 3) * 1000);
       }
