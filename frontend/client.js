@@ -62,20 +62,18 @@ socket.on('gameEnd', (data) => {
     if (typeof stopPowerOutageSequence === 'function') {
       stopPowerOutageSequence();
     }
+    // triggerWinSequence hands off to finishNight, which either rolls straight
+    // into the next night or stops on the end card — so no callback here.
     if (typeof triggerWinSequence === 'function') {
-      triggerWinSequence(() => {
-        if (typeof returnToMainMenu === 'function') {
-          returnToMainMenu(true);
-        }
-      });
+      triggerWinSequence();
     } else if (typeof returnToMainMenu === 'function') {
-      returnToMainMenu(true);
+      returnToMainMenu();
     }
   } else if (data.result === 'powerOut') {
     if (typeof triggerPowerOutage === 'function') {
       triggerPowerOutage();
     } else if (typeof returnToMainMenu === 'function') {
-      returnToMainMenu(false);
+      returnToMainMenu();
     }
   }
 });

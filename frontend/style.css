@@ -629,6 +629,8 @@ body {
     margin: 0 0 2.5cqh 0;
 }
 
+/* Three fixed slots so each star keeps its own position — left, middle, right —
+   whichever ones have been earned. */
 #starsContainer {
     position: relative;
     z-index: 2;
@@ -636,6 +638,12 @@ body {
     gap: 1.1cqh;
     margin-bottom: 4cqh;
     height: 3.8cqh;
+}
+
+.star-slot {
+    width: 3.94cqh;
+    /* star.png is 57x55 */
+    height: 100%;
 }
 
 #starsContainer img {

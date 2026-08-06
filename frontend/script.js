@@ -89,13 +89,19 @@ function updateCctvPan() {
    No such font ships with the browser, so the text is drawn tiny, thresholded
    to 1-bit — which is what kills the antialiasing and produces hard square
    pixels — and then upscaled with image-rendering: pixelated. Each glyph is
-   centred in its own fixed cell so the result stays on an exact monospace grid. */
-const PIXEL_CELL_W = 6;
-const PIXEL_CELL_H = 11;
-const PIXEL_BASELINE = 8;
-const PIXEL_FONT_PX = 11;      // Consolas cap height at 11px ≈ 7px — the plate's
+   centred in its own fixed cell so the result stays on an exact monospace grid.
+
+   Blockiness is set by how small the source is drawn before it gets blown up:
+   a bigger cell means finer steps for the same on-screen size. */
+const PIXEL_FONT_PX = 18;
+const PIXEL_CELL_W = 10;       // ≈ Consolas' 0.5498em advance at 18px
+const PIXEL_CELL_H = 19;
+const PIXEL_BASELINE = 14;
 const PIXEL_ALPHA_CUT = 110;   // coverage below this is dropped, above it is solid
-const PIXEL_UPSCALE_CQH = 0.515; // 3.71px per source pixel against a 720px frame
+// Keep the on-screen glyph pitch on the camera-name plates' 21.63px regardless
+// of how the source cell is sized, so changing the two above only changes grain.
+const PIXEL_TARGET_ADVANCE_PX = 21.63;
+const PIXEL_UPSCALE_CQH = (PIXEL_TARGET_ADVANCE_PX / PIXEL_CELL_W) / 720 * 100;
 // Spelled out rather than read from --fnaf-font: ctx.font silently ignores a
 // value it cannot parse, which would leave the HUD in 10px sans-serif.
 const PIXEL_FONT_STACK = 'Consolas, "Lucida Console", "DejaVu Sans Mono", monospace';
@@ -269,6 +275,9 @@ const audioSources = {
     menuAmbience: 'audio/main menu ambience.mp3',
     error: 'audio/error.wav',
     musicBox: 'audio/music box.wav',
+    kitchenMusicBox: 'audio/music box.wav', // separate element: the power-outage
+                                            // cue uses musicBox at the same time
+    pirateSong: 'audio/pirate song2.wav',
     win: 'audio/win.mp3',
     run: 'audio/run.wav',
     knock2: 'audio/knock2.wav',
@@ -755,7 +764,7 @@ let deathStaticTimeout = null;
 function showGameOverScreen() {
     const gameOverScreen = document.getElementById('gameOverScreen');
     if (!gameOverScreen) {
-        returnToMainMenu(false);
+        returnToMainMenu();
         return;
     }
 
@@ -772,7 +781,7 @@ function showGameOverScreen() {
         if (e.button !== undefined && e.button !== 0) return;
         gameOverScreen.removeEventListener('click', onGameOverClick);
         gameOverScreen.style.display = 'none';
-        returnToMainMenu(false);
+        returnToMainMenu();
     }
 
     gameOverScreen.removeEventListener('click', onGameOverClick);
@@ -806,6 +815,8 @@ function triggerJumpscare(reason) {
     stopSound('on_cam');
     stopSound('musicBox');
     stopKitchenOvenSound();
+    stopKitchenMusic();
+    stopPirateSongRolls();
 
     playSound('jumpscare');
     if (jumpscare) {
@@ -875,45 +886,76 @@ function afterWin(ms, fn) {
     winSequenceTimeouts.push(setTimeout(fn, ms));
 }
 
-// Nights 5, 6 and 7 each end on their own card; earlier nights just go back to
-// the menu. These three plates ship with the game and were never wired up.
-function getEndCardFilename(night) {
-    if (night === 5) return 'textures/end game/210.png';   // "see you next week"
-    if (night === 6) return 'textures/end game/522.png';   // "you've earned some overtime!"
-    if (night >= 7) return 'textures/end game/523.png';    // notice of termination
-    return null;
+/* Nights 5, 6 and 7 each finish on their own plate, held under the music box
+   until it ends or the player clicks. Earlier nights roll straight on to the
+   next night instead. */
+const END_CARDS = {
+    5: { img: 'textures/end game/5th.png', star: 0 },
+    6: { img: 'textures/end game/6th.png', star: 1 },
+    7: { img: 'textures/end game/7th.png', star: 2 }
+};
+
+function getEndCard(night) {
+    return END_CARDS[Math.min(7, night)] || null;
 }
+
+const END_CARD_FADE_MS = 900;
+const END_CARD_FALLBACK_MS = 30000; // only used if the music box duration is unknown
 
 function showEndCard(night, callback) {
     const screen = document.getElementById('endCardScreen');
     const img = document.getElementById('endCardImg');
-    const file = getEndCardFilename(night);
+    const card = getEndCard(night);
 
-    if (!screen || !img || !file) {
+    if (!screen || !img || !card) {
         if (typeof callback === 'function') callback();
         return;
     }
 
+    awardStar(card.star);
+
+    const music = ensureAudio('musicBox');
     let done = false;
+
     function finish() {
         if (done) return;
         done = true;
         screen.removeEventListener('click', finish);
+        if (music) music.removeEventListener('ended', finish);
+        stopSound('musicBox');
         screen.classList.remove('visible');
-        afterWin(600, () => {
+        afterWin(END_CARD_FADE_MS, () => {
             screen.style.display = 'none';
             if (typeof callback === 'function') callback();
         });
     }
 
-    img.src = file;
+    img.src = card.img;
     screen.style.display = 'flex';
     void screen.offsetHeight;
     screen.classList.add('visible');
 
+    playSound('musicBox');
+    if (music) {
+        music.loop = false;
+        music.addEventListener('ended', finish);
+        // Belt and braces if the file never fires `ended`.
+        const known = isFinite(music.duration) && music.duration > 0;
+        afterWin(known ? music.duration * 1000 + 500 : END_CARD_FALLBACK_MS, finish);
+    } else {
+        afterWin(END_CARD_FALLBACK_MS, finish);
+    }
+
     screen.addEventListener('click', finish);
-    afterWin(9000, finish);
 }
+
+// How far the "6" sits below the "5" before the clock rolls, as a share of the
+// digit's own height. >100% leaves clear air between them mid-roll.
+const WIN_DIGIT_GAP = 165;
+const WIN_ROLL_MS = 2200;
+const WIN_HOLD_BEFORE_ROLL_MS = 1200;
+const WIN_FADE_MS = 600;
+const WIN_FALLBACK_MS = 9000;
 
 function triggerWinSequence(callback) {
     const winScreen = document.getElementById('winScreen');
@@ -931,11 +973,14 @@ function triggerWinSequence(callback) {
     stopSound('ambience');
     stopSound('on_cam');
     stopKitchenOvenSound();
+    stopKitchenMusic();
+    stopPirateSongRolls();
     if (typeof stopPowerOutageSequence === 'function') {
         stopPowerOutageSequence();
     }
 
-    // Reset the roller: 5 in view, 6 waiting below.
+    // Reset the roller: 5 in view, 6 parked further below than its own height.
+    winDigit6.style.top = WIN_DIGIT_GAP + '%';
     winDigit5.style.transition = 'none';
     winDigit6.style.transition = 'none';
     winDigit5.style.transform = 'translateY(0%)';
@@ -948,23 +993,50 @@ function triggerWinSequence(callback) {
     winScreen.classList.add('visible');
     playSound('win');
 
-    // 5 AM holds briefly, the clock rolls over to 6, then the chime rides out
-    // before the screen fades. The old timing sat on a static 6 AM for 7s.
-    afterWin(900, () => {
-        const roll = 'transform 0.9s cubic-bezier(0.33, 0, 0.2, 1)';
+    // The scene runs exactly as long as win.mp3 does. The chime's length is only
+    // known once metadata has loaded, so fall back to a fixed hold if it hasn't.
+    const chime = ensureAudio('win');
+    const chimeMs = chime && isFinite(chime.duration) && chime.duration > 0
+        ? chime.duration * 1000
+        : WIN_FALLBACK_MS;
+    const holdAfterRoll = Math.max(
+        400,
+        chimeMs - WIN_HOLD_BEFORE_ROLL_MS - WIN_ROLL_MS - WIN_FADE_MS
+    );
+
+    afterWin(WIN_HOLD_BEFORE_ROLL_MS, () => {
+        const roll = `transform ${WIN_ROLL_MS}ms cubic-bezier(0.4, 0, 0.2, 1)`;
         winDigit5.style.transition = roll;
         winDigit6.style.transition = roll;
-        winDigit5.style.transform = 'translateY(-100%)';
-        winDigit6.style.transform = 'translateY(-100%)';
+        winDigit5.style.transform = `translateY(-${WIN_DIGIT_GAP}%)`;
+        winDigit6.style.transform = `translateY(-${WIN_DIGIT_GAP}%)`;
 
-        afterWin(3600, () => {
+        afterWin(WIN_ROLL_MS + holdAfterRoll, () => {
             winScreen.classList.remove('visible');
-            afterWin(500, () => {
+            afterWin(WIN_FADE_MS, () => {
                 stopSound('win');
                 winScreen.style.display = 'none';
-                showEndCard(night, callback);
+                finishNight(night, callback);
             });
         });
+    });
+}
+
+/* Where a cleared night goes next: 1-4 roll straight into the following night,
+   5/6/7 stop on their end card and then drop back to the menu. */
+function finishNight(night, callback) {
+    if (night < 5) {
+        const nextNight = night + 1;
+        if (nextNight > getSavedNight()) setSavedNight(nextNight);
+        startGame(nextNight);
+        return;
+    }
+
+    if (night === 5 && getSavedNight() < 6) setSavedNight(6);
+
+    showEndCard(night, () => {
+        if (typeof callback === 'function') callback();
+        else returnToMainMenu();
     });
 }
 
@@ -1112,6 +1184,119 @@ function playCamGlitch() {
     }, 50);
 }
 
+/* ------------------- Freddy's music box (Kitchen, CAM 06) -------------------
+   Clear when you're watching the kitchen, and barely-there through the office
+   wall otherwise. The muffling is a real lowpass rather than just a low volume,
+   which needs the element routed through Web Audio; if that isn't available the
+   mix falls back to volume alone. */
+const KITCHEN_MUSIC_ON_CAM = { gain: 0.55, cutoffHz: 18000 };
+const KITCHEN_MUSIC_MUFFLED = { gain: 0.09, cutoffHz: 380 };
+
+let kitchenChain = null;
+let kitchenMusicPlaying = false;
+
+function ensureKitchenChain() {
+    const el = ensureAudio('kitchenMusicBox');
+    if (!el) return null;
+    el.loop = true;
+
+    if (kitchenChain !== null) return el;
+
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) { kitchenChain = false; return el; }
+
+    try {
+        const ctx = new Ctx();
+        const source = ctx.createMediaElementSource(el);
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        const gain = ctx.createGain();
+        source.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+        kitchenChain = { ctx, filter, gain };
+    } catch (err) {
+        kitchenChain = false; // routing failed — plain volume it is
+    }
+    return el;
+}
+
+function setKitchenMusicMix(onCam) {
+    const el = ensureKitchenChain();
+    if (!el) return;
+    const mix = onCam ? KITCHEN_MUSIC_ON_CAM : KITCHEN_MUSIC_MUFFLED;
+
+    if (kitchenChain) {
+        const now = kitchenChain.ctx.currentTime;
+        kitchenChain.gain.gain.setTargetAtTime(mix.gain, now, 0.15);
+        kitchenChain.filter.frequency.setTargetAtTime(mix.cutoffHz, now, 0.15);
+        el.volume = 1;
+    } else {
+        el.volume = mix.gain;
+    }
+}
+
+function startKitchenMusic(onCam) {
+    const el = ensureKitchenChain();
+    if (!el) return;
+    setKitchenMusicMix(onCam);
+    if (kitchenMusicPlaying) return;
+    kitchenMusicPlaying = true;
+    if (kitchenChain && kitchenChain.ctx.state === 'suspended') {
+        kitchenChain.ctx.resume().catch(() => { });
+    }
+    el.play().catch(() => { });
+}
+
+function stopKitchenMusic() {
+    kitchenMusicPlaying = false;
+    const el = audio['kitchenMusicBox'];
+    if (el) {
+        el.pause();
+        el.currentTime = 0;
+    }
+}
+
+// Freddy is in the kitchen for as long as his location is CAM 06.
+function updateFreddyMusicBox(state) {
+    const inKitchen = !!(state && state.animatronics && state.animatronics.freddy.location === '6');
+    if (!inKitchen || state.power <= 0 || isPowerOutage) {
+        stopKitchenMusic();
+        return;
+    }
+    startKitchenMusic(isCameraUp && selectedCamera === '6');
+}
+
+/* --------------------- Foxy's tune inside Pirate Cove ----------------------
+   One chance in five every 30 seconds, and only while you're actually watching
+   CAM 1C with Foxy still behind the curtain. */
+const PIRATE_SONG_INTERVAL_MS = 30000;
+const PIRATE_SONG_CHANCE = 0.2;
+let pirateSongTimer = null;
+
+function foxyStillInCove() {
+    const foxy = currentState && currentState.animatronics && currentState.animatronics.foxy;
+    return !!foxy && foxy.foxyStage < 3;
+}
+
+function startPirateSongRolls() {
+    stopPirateSongRolls();
+    pirateSongTimer = setInterval(() => {
+        if (!currentState || currentState.power <= 0 || isPowerOutage) return;
+        if (!isCameraUp || selectedCamera !== '1C') return;
+        if (!foxyStillInCove()) return;
+        if (Math.random() < PIRATE_SONG_CHANCE) playSound('pirateSong');
+    }, PIRATE_SONG_INTERVAL_MS);
+}
+
+function stopPirateSongRolls() {
+    if (pirateSongTimer) {
+        clearInterval(pirateSongTimer);
+        pirateSongTimer = null;
+    }
+    stopSound('pirateSong');
+}
+
 const ovenSounds = ['oven1', 'oven2', 'oven3', 'oven4'];
 let currentOvenSound = null;
 
@@ -1164,6 +1349,10 @@ function selectCamera(cam) {
 
     // Kitchen oven sounds: play random oven sound when switching to cam 6 while Chica is in kitchen
     updateKitchenOvenSound(cam);
+
+    // Freddy's music box opens up when you land on the kitchen and muffles again
+    // when you leave it.
+    if (currentState) updateFreddyMusicBox(currentState);
 }
 
 let cameraAnimating = false;
@@ -1488,6 +1677,8 @@ function onServerState(state) {
         stopKitchenOvenSound();
     }
 
+    updateFreddyMusicBox(state);
+
     const aiDisplay = document.getElementById('aiDisplay');
     if (aiDisplay) {
         document.getElementById('aiF').textContent = state.animatronics.freddy.ai;
@@ -1802,15 +1993,25 @@ function setSavedNight(night) {
     localStorage.setItem('fnaf_saved_night', night.toString());
 }
 
-function getSavedStars() {
-    return parseInt(localStorage.getItem('fnaf_saved_stars') || '0', 10);
+/* Three independent stars, each in a fixed slot on the menu:
+   left  — cleared night 5
+   mid   — cleared the 6th night
+   right — cleared the 7th / custom night
+   They are separate flags rather than a count so a later clear can't imply an
+   earlier one, and so each lands in its own slot. */
+const STAR_KEYS = ['fnaf_star_night5', 'fnaf_star_night6', 'fnaf_star_night7'];
+
+function hasStar(index) {
+    return localStorage.getItem(STAR_KEYS[index]) === '1';
 }
 
-function setSavedStars(stars) {
-    const current = getSavedStars();
-    if (stars > current) {
-        localStorage.setItem('fnaf_saved_stars', stars.toString());
-    }
+function awardStar(index) {
+    if (STAR_KEYS[index]) localStorage.setItem(STAR_KEYS[index], '1');
+}
+
+// A cleared 5th night is what opens the 6th.
+function isNight6Unlocked() {
+    return hasStar(0) || getSavedNight() >= 6;
 }
 
 let customAiLevels = {
@@ -1892,25 +2093,25 @@ function renderMainMenu() {
     const btnNight6 = document.getElementById('btnNight6');
     const btnCustomNight = document.getElementById('btnCustomNight');
 
-    const unlockedNight = parseInt(localStorage.getItem('fnaf_saved_night') || '1', 10);
+    // 6th Night keeps its space when locked (visibility, not display) so Custom
+    // Night always sits in the slot below it rather than sliding up.
+    if (btnNight6) btnNight6.style.visibility = isNight6Unlocked() ? 'visible' : 'hidden';
+    if (btnCustomNight) btnCustomNight.style.display = 'flex'; // always available
 
-    if (btnNight6) btnNight6.style.display = unlockedNight >= 6 ? 'flex' : 'none';
-    if (btnCustomNight) btnCustomNight.style.display = 'flex'; // Available by default
-
-    // Render stars
+    // Three fixed star slots — an unearned star leaves its slot empty.
     const starsContainer = document.getElementById('starsContainer');
     if (starsContainer) {
         starsContainer.innerHTML = '';
-        let starCount = 0;
-        if (unlockedNight >= 6) starCount = 1;
-        if (unlockedNight >= 7) starCount = 2;
-        if (getSavedStars() >= 3) starCount = 3;
-
-        for (let i = 0; i < starCount; i++) {
-            const img = document.createElement('img');
-            img.src = 'textures/main menu/star.png';
-            img.alt = 'Star';
-            starsContainer.appendChild(img);
+        for (let i = 0; i < STAR_KEYS.length; i++) {
+            const slot = document.createElement('div');
+            slot.className = 'star-slot';
+            if (hasStar(i)) {
+                const img = document.createElement('img');
+                img.src = 'textures/main menu/star.png';
+                img.alt = 'Star';
+                slot.appendChild(img);
+            }
+            starsContainer.appendChild(slot);
         }
     }
 }
@@ -1944,8 +2145,7 @@ document.getElementById('foxyPlus')?.addEventListener('click', () => adjustCusto
 
 document.getElementById('btnStartCustom')?.addEventListener('click', () => {
     document.getElementById('customNightScreen').style.display = 'none';
-    const is20202020 = customAiLevels.freddy === 20 && customAiLevels.bonnie === 20 && customAiLevels.chica === 20 && customAiLevels.foxy === 20;
-    if (is20202020) setSavedStars(3);
+    // The third star is earned by surviving to 6 AM here, not by setting 20/20/20/20.
     startGame(7, customAiLevels);
 });
 
@@ -1958,7 +2158,8 @@ document.getElementById('btnBackCustom')?.addEventListener('click', () => {
 const selectorArrow = document.getElementById('selectorArrow');
 document.querySelectorAll('.menu-item').forEach(item => {
     item.addEventListener('mouseenter', () => {
-        if (item.style.display === 'none') return;
+        // A locked 6th Night still occupies its slot, so check visibility too.
+        if (item.style.display === 'none' || item.style.visibility === 'hidden') return;
         // Reveal the "Night n" subhead from the same event that drives the
         // arrow, so the two can never disagree.
         item.classList.add('is-hovered');
@@ -2013,6 +2214,9 @@ function showMainMenu() {
     cameraAnimation.style.display = 'none';
     stopSound('ambience');
     stopSound('win');
+    stopKitchenOvenSound();
+    stopKitchenMusic();
+    stopPirateSongRolls();
     startMenuMusic();
     startMenuTwitch();
 }
@@ -2119,17 +2323,13 @@ function startGame(night, customAI = null) {
     hideMainMenu();
     showNightIntro(night, () => {
         joinGame(currentRoomId, night, customAI);
+        startPirateSongRolls();
     });
 }
 
-function returnToMainMenu(win = false) {
-    if (win && currentNight <= 6) {
-        const nextNight = currentNight + 1;
-        const currentSaved = parseInt(localStorage.getItem('fnaf_saved_night') || '1', 10);
-        if (nextNight > currentSaved) {
-            setSavedNight(nextNight);
-        }
-    }
+// Progression is settled in finishNight(), which knows whether the night rolls
+// straight into the next one or stops on an end card.
+function returnToMainMenu() {
     showMainMenu();
 }
 
@@ -2177,7 +2377,8 @@ document.getElementById('btnContinue')?.addEventListener('click', () => {
     startGame(savedNight);
 });
 
-document.getElementById('btnNight6')?.addEventListener('click', () => {
+document.getElementById('btnNight6')?.addEventListener('click', (e) => {
+    if (e.currentTarget.style.visibility === 'hidden') return;
     startGame(6);
 });
 
@@ -2188,6 +2389,10 @@ document.getElementById('btnCustomNight')?.addEventListener('click', () => {
 });
 
 initTextPlates();
+
+// Warm the clips whose *duration* drives timing, so it is known by the time a
+// night is actually cleared rather than NaN on first use.
+['win', 'musicBox', 'kitchenMusicBox', 'pirateSong'].forEach(ensureAudio);
 
 // Seed the HUD so it is drawn before the first server state arrives.
 drawPixelText(document.getElementById('usageLabel'), 'Usage:');

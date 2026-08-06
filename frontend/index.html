@@ -153,7 +153,9 @@
                         <span id="continueNight">1</span>
                     </div>
                 </div>
-                <div id="btnNight6" class="menu-item" style="display: none;">
+                <!-- Hidden with `visibility` rather than `display` so the slot is
+                     held and Custom Night stays put whether or not it's unlocked. -->
+                <div id="btnNight6" class="menu-item" style="visibility: hidden;">
                     <img class="text-plate" src="textures/main menu/6th night menu.png" alt="6th Night">
                 </div>
                 <div id="btnCustomNight" class="menu-item" style="display: none;">
