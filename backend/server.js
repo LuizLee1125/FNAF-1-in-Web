@@ -16,11 +16,14 @@ const HOUR_TICKS = 60;
 const TOTAL_HOURS = 6;
 const POWER_DRAIN_BASE = 0.09;
 
+// Movement opportunity intervals from the original game — each animatronic rolls
+// 1-20 on its own clock and fails the move if the roll exceeds its AI level.
+// Source: Technical-FNAF wiki, "Movement Opportunities (Fnaf 1)".
 const MOVEMENT_CONFIG = {
-  freddy: { intervalMs: 10000, cameraStall: true },
-  bonnie: { intervalMs: 9970, cameraStall: false },
-  chica: { intervalMs: 9980, cameraStall: false },
-  foxy: { intervalMs: 6010, cameraStall: true }
+  freddy: { intervalMs: 3020, cameraStall: true },
+  bonnie: { intervalMs: 4970, cameraStall: false },
+  chica: { intervalMs: 4980, cameraStall: false },
+  foxy: { intervalMs: 5010, cameraStall: true }
 };
 
 // FNAF 1 Accurate Room Graph

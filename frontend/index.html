@@ -4,13 +4,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FNAF Web Clone</title>
-    <link rel="stylesheet" href="style.css?v=1">
+    <title>Five Nights at Freddy's</title>
+    <link rel="stylesheet" href="style.css?v=2">
 </head>
 
 <body>
     <div id="gameWindow">
-        <div id="aiDisplay" style="position: absolute; top: 15px; left: 15px; color: #fff; font-family: 'Courier New', Courier, monospace; font-size: 16px; font-weight: bold; z-index: 100; text-shadow: 0 0 5px #000; pointer-events: none; display: none;">
+        <div id="aiDisplay" style="position: absolute; top: 15px; left: 15px; color: #fff; font-size: 16px; z-index: 100; pointer-events: none; display: none;">
             AI - F:<span id="aiF">0</span> B:<span id="aiB">0</span> C:<span id="aiC">0</span> Fx:<span id="aiFx">0</span>
         </div>
 
@@ -34,45 +34,48 @@
             <img id="cameraFeed" src="" alt="Camera Feed" style="display:none;">
             <img id="cameraStatic" src="textures/static/12.png" alt="" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; z-index: 5; opacity: 0.25;">
             <img id="camGlitch" src="" alt="" style="display:none;">
+            <img id="kitchenText" class="text-plate" src="textures/camera/cam assets/kitchen txt.png" alt="Camera disabled - audio only">
             <img id="camBorder" src="textures/camera/cam assets/cam border.png" alt="Cam Border">
             <div class="red-dot"></div>
 
+            <!-- Marker left/top are room centres on the 400x400 map plate; the
+                 markers are centred on them via translate(-50%, -50%). -->
             <div class="camera-map">
-                <img id="camNameImg" src="textures/camera/camera names/1A.png" alt="Camera Name">
+                <img id="camNameImg" class="text-plate" src="textures/camera/camera names/1A.png" alt="Camera Name">
                 <img id="camMapBg" src="textures/camera/cam assets/cam map.png" alt="Cam Map">
-                
-                <div class="camera-position active" data-cam="1A" style="left:46%; top:6%;">
-                    <img src="textures/camera/cam assets/1a.png" alt="1A">
+
+                <div class="camera-position active" data-cam="1A" style="left:44.5%; top:15%;">
+                    <img class="text-plate" src="textures/camera/cam assets/1a.png" alt="1A">
                 </div>
-                <div class="camera-position" data-cam="1B" style="left:42%; top:22%;">
-                    <img src="textures/camera/cam assets/1b.png" alt="1B">
+                <div class="camera-position" data-cam="1B" style="left:44.6%; top:36.5%;">
+                    <img class="text-plate" src="textures/camera/cam assets/1b.png" alt="1B">
                 </div>
-                <div class="camera-position" data-cam="1C" style="left:28%; top:39%;">
-                    <img src="textures/camera/cam assets/1c.png" alt="1C">
+                <div class="camera-position" data-cam="1C" style="left:10.4%; top:46.3%;">
+                    <img class="text-plate" src="textures/camera/cam assets/1c.png" alt="1C">
                 </div>
-                <div class="camera-position" data-cam="2A" style="left:33%; top:62%;">
-                    <img src="textures/camera/cam assets/2a.png" alt="2A">
+                <div class="camera-position" data-cam="2A" style="left:31.4%; top:66%;">
+                    <img class="text-plate" src="textures/camera/cam assets/2a.png" alt="2A">
                 </div>
-                <div class="camera-position" data-cam="2B" style="left:33%; top:79%;">
-                    <img src="textures/camera/cam assets/2b.png" alt="2B">
+                <div class="camera-position" data-cam="2B" style="left:31.4%; top:84%;">
+                    <img class="text-plate" src="textures/camera/cam assets/2b.png" alt="2B">
                 </div>
-                <div class="camera-position" data-cam="3" style="left:16%; top:60%;">
-                    <img src="textures/camera/cam assets/3.png" alt="3">
+                <div class="camera-position" data-cam="3" style="left:18.5%; top:68.8%;">
+                    <img class="text-plate" src="textures/camera/cam assets/3.png" alt="3">
                 </div>
-                <div class="camera-position" data-cam="4A" style="left:57%; top:62%;">
-                    <img src="textures/camera/cam assets/4a.png" alt="4A">
+                <div class="camera-position" data-cam="4A" style="left:57.5%; top:66%;">
+                    <img class="text-plate" src="textures/camera/cam assets/4a.png" alt="4A">
                 </div>
-                <div class="camera-position" data-cam="4B" style="left:57%; top:79%;">
-                    <img src="textures/camera/cam assets/4b.png" alt="4B">
+                <div class="camera-position" data-cam="4B" style="left:57.5%; top:84%;">
+                    <img class="text-plate" src="textures/camera/cam assets/4b.png" alt="4B">
                 </div>
-                <div class="camera-position" data-cam="5" style="left:10%; top:26%;">
-                    <img src="textures/camera/cam assets/5.png" alt="5">
+                <div class="camera-position" data-cam="5" style="left:7.1%; top:27.9%;">
+                    <img class="text-plate" src="textures/camera/cam assets/5.png" alt="5">
                 </div>
-                <div class="camera-position" data-cam="6" style="left:76%; top:52%;">
-                    <img src="textures/camera/cam assets/6.png" alt="6">
+                <div class="camera-position" data-cam="6" style="left:77.2%; top:65.8%;">
+                    <img class="text-plate" src="textures/camera/cam assets/6.png" alt="6">
                 </div>
-                <div class="camera-position" data-cam="7" style="left:80%; top:26%;">
-                    <img src="textures/camera/cam assets/7.png" alt="7">
+                <div class="camera-position" data-cam="7" style="left:81%; top:39.3%;">
+                    <img class="text-plate" src="textures/camera/cam assets/7.png" alt="7">
                 </div>
             </div>
         </div>
@@ -82,32 +85,34 @@
         </div>
 
         <div id="nightIntroScreen" style="display:none;">
-            <img id="nightIntroImg" src="" alt="12 AM Night">
+            <img id="nightIntroImg" class="text-plate" src="" alt="12 AM Night">
         </div>
 
-        <img id="cameraAnimation" src="" alt="Camera Animation" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; object-fit:contain; background:rgba(0,0,0,0.9); z-index:200;">
+        <img id="cameraAnimation" src="" alt="Camera Animation" style="display:none;">
 
         <img id="jumpscare" src="textures/jumpscares/freddy/489.png" alt="Jumpscare" style="display:none;">
 
-        <div id="deathStaticScreen" style="display: none; position: absolute; inset: 0; z-index: 1500; background: #000;">
-            <img id="deathStaticImg" src="textures/static/12.png" alt="" style="width: 100%; height: 100%; object-fit: cover; opacity: 1.0;">
+        <!-- The inline display flags are load-bearing: script.js gates behaviour on
+             `el.style.display`, so these must stay inline, not move into the CSS. -->
+        <div id="deathStaticScreen" style="display:none;">
+            <img id="deathStaticImg" src="textures/static/12.png" alt="">
         </div>
 
-        <div id="gameOverScreen" style="display: none; position: absolute; inset: 0; z-index: 1600; background: #000; cursor: pointer;">
-            <img id="gameOverImg" src="textures/main menu/gameover.png" alt="Game Over" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated;">
-            <img id="gameOverTxt" src="textures/main menu/gameovertxt.png" alt="" style="position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); max-width: 60%; height: auto; object-fit: contain; image-rendering: pixelated; z-index: 1;">
+        <div id="gameOverScreen" style="display:none;">
+            <img id="gameOverImg" src="textures/main menu/gameover.png" alt="Game Over">
+            <img id="gameOverTxt" class="text-plate" src="textures/main menu/gameovertxt.png" alt="">
         </div>
 
-        <div id="winScreen" style="display: none; position: absolute; inset: 0; z-index: 2000; background: #000; flex-direction: row; align-items: center; justify-content: center;">
-            <div id="winDigitContainer" style="position: relative; width: 140px; height: 160px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
-                <img id="winDigit5" src="textures/win/350.png" alt="5" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; transform: translateY(0%); transition: transform 1.8s ease-in-out;">
-                <img id="winDigit6" src="textures/win/351.png" alt="6" style="position: absolute; top: 100%; left: 0; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; transform: translateY(0%); transition: transform 1.8s ease-in-out;">
+        <div id="winScreen" style="display:none;">
+            <div id="winDigitContainer">
+                <img id="winDigit5" class="text-plate" src="textures/win/350.png" alt="5">
+                <img id="winDigit6" class="text-plate" src="textures/win/351.png" alt="6">
             </div>
-            <img id="winAmText" src="textures/win/352.png" alt="AM" style="height: 160px; width: auto; object-fit: contain; image-rendering: pixelated; margin-left: 25px;">
+            <img id="winAmText" class="text-plate" src="textures/win/352.png" alt="AM">
         </div>
 
         <div id="powerUsage">
-            <div class="hud-text" style="margin-bottom: 5px;">Power left: <span id="powerDisplay">100%</span></div>
+            <div class="hud-text">Power left: <span id="powerDisplay">100%</span></div>
             <div class="hud-text usage-container">
                 Usage: <img id="powerUsageImg" src="textures/power/1 usage.png" alt="Power Usage">
                 <div id="usageDisplay" style="display: none;">1</div>
@@ -115,43 +120,50 @@
         </div>
 
         <div id="timeDisplayContainer">
-            <div id="timeDisplay" class="hud-text" style="font-size: 32px; text-align: right; margin-bottom: 5px;">12 AM</div>
-            <div id="nightDisplay" class="hud-text" style="font-size: 20px; text-align: right;">Night 1</div>
+            <div id="timeDisplay" class="hud-text">12 AM</div>
+            <div id="nightDisplay" class="hud-text">Night 1</div>
         </div>
 
         <div id="mainMenu" style="display:none;">
             <img id="menuBg" src="textures/main menu/431.png" alt="Menu Background">
             <img id="menuStatic" src="textures/static/12.png" alt="" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; z-index: 2; opacity: 0.15;">
-            <img id="menuTitle" src="textures/main menu/name.png" alt="FNAF">
+            <img id="menuTitle" class="text-plate" src="textures/main menu/name.png" alt="Five Nights at Freddy's">
             <div id="starsContainer"></div>
-            
-            <img id="selectorArrow" src="textures/main menu/hover.png" alt=">>">
 
+            <img id="selectorArrow" class="text-plate" src="textures/main menu/hover.png" alt=">>">
+
+            <!-- Labels are the game's own Consolas plates rather than live text. -->
             <div class="menu-buttons">
                 <div id="btnNewGame" class="menu-item">
-                    <span>New Game</span>
+                    <img class="text-plate" src="textures/main menu/448.png" alt="New Game">
                 </div>
                 <div id="btnContinue" class="menu-item">
-                    <span>Continue</span>
-                    <div id="continueSubhead" class="menu-subhead">Night 1</div>
+                    <img class="text-plate" src="textures/main menu/449.png" alt="Continue">
+                    <div id="continueSubhead" class="menu-subhead">
+                        <img class="text-plate" src="textures/main menu/night sub.png" alt="Night">
+                        <span id="continueNight">1</span>
+                    </div>
                 </div>
                 <div id="btnNight6" class="menu-item" style="display: none;">
-                    <span>6th Night</span>
+                    <img class="text-plate" src="textures/main menu/6th night menu.png" alt="6th Night">
                 </div>
                 <div id="btnCustomNight" class="menu-item" style="display: none;">
-                    <span>Custom Night</span>
+                    <img class="text-plate" src="textures/main menu/custom night menu.png" alt="Custom Night">
                 </div>
             </div>
+
+            <div id="creditText">Web recreation by Luiz Lee</div>
+            <div id="copyrightText">&copy;2014 Scott Cawthon</div>
         </div>
 
-        <div id="customNightScreen" style="display: none;">
+        <div id="customNightScreen" style="display:none;">
             <div class="custom-header">
-                <img src="textures/customnight/ai level.png" alt="A.I. LEVEL" class="custom-title-img">
+                <img src="textures/customnight/ai level.png" alt="A.I. LEVEL" class="custom-title-img text-plate">
             </div>
             <div class="custom-animatronics">
                 <div class="anim-card">
                     <img src="textures/customnight/freddy.icon.png" alt="Freddy" class="anim-icon">
-                    <img src="textures/customnight/freddy.name.png" alt="Freddy" class="anim-name">
+                    <img src="textures/customnight/freddy.name.png" alt="Freddy" class="anim-name text-plate">
                     <div class="ai-controls">
                         <button class="ai-btn" id="freddyMinus">&lt;</button>
                         <span class="ai-val" id="customAiFreddy">20</span>
@@ -160,7 +172,7 @@
                 </div>
                 <div class="anim-card">
                     <img src="textures/customnight/bonnie.icon.png" alt="Bonnie" class="anim-icon">
-                    <img src="textures/customnight/bonnie.name.png" alt="Bonnie" class="anim-name">
+                    <img src="textures/customnight/bonnie.name.png" alt="Bonnie" class="anim-name text-plate">
                     <div class="ai-controls">
                         <button class="ai-btn" id="bonnieMinus">&lt;</button>
                         <span class="ai-val" id="customAiBonnie">20</span>
@@ -169,7 +181,7 @@
                 </div>
                 <div class="anim-card">
                     <img src="textures/customnight/chica.icon.png" alt="Chica" class="anim-icon">
-                    <img src="textures/customnight/chica.name.png" alt="Chica" class="anim-name">
+                    <img src="textures/customnight/chica.name.png" alt="Chica" class="anim-name text-plate">
                     <div class="ai-controls">
                         <button class="ai-btn" id="chicaMinus">&lt;</button>
                         <span class="ai-val" id="customAiChica">20</span>
@@ -178,7 +190,7 @@
                 </div>
                 <div class="anim-card">
                     <img src="textures/customnight/foxy.icon.png" alt="Foxy" class="anim-icon">
-                    <img src="textures/customnight/foxy.name.png" alt="Foxy" class="anim-name">
+                    <img src="textures/customnight/foxy.name.png" alt="Foxy" class="anim-name text-plate">
                     <div class="ai-controls">
                         <button class="ai-btn" id="foxyMinus">&lt;</button>
                         <span class="ai-val" id="customAiFoxy">20</span>
@@ -186,16 +198,18 @@
                     </div>
                 </div>
             </div>
+            <img src="textures/customnight/level.png" alt="(0-2)easy (3-6)med (7-12)hard (13-20)extreme" class="custom-legend text-plate">
+
             <div class="custom-actions">
-                <img id="btnStartCustom" src="textures/customnight/ready.png" alt="READY" class="btn-ready-img">
+                <img id="btnStartCustom" src="textures/customnight/ready.png" alt="READY" class="btn-ready-img text-plate">
                 <div id="btnBackCustom" class="custom-back-btn">BACK</div>
             </div>
         </div>
     </div>
 
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-    <script src="client.js?v=1"></script>
-    <script src="script.js?v=1"></script>
+    <script src="client.js?v=2"></script>
+    <script src="script.js?v=2"></script>
 </body>
 
 </html>

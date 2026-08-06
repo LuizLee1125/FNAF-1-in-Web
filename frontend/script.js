@@ -1,4 +1,5 @@
 // Game Elements
+const gameWindow = document.getElementById('gameWindow');
 const office = document.getElementById('office');
 const cameraOverlay = document.getElementById('cameraOverlay');
 const cameraFeed = document.getElementById('cameraFeed');
@@ -17,7 +18,14 @@ const usageDisplay = document.getElementById('usageDisplay');
 
 // State Variables
 let mouseX = 0;
-const DEFAULT_CAMERA_PAN = -25;
+// The office plate is 1600x720 against a 1280x720 frame, so #office is 125% wide
+// and `left` travels from 0% (hard right) to -25% (hard left); -12.5% is centred.
+const OFFICE_PAN_MIN = -25;
+const OFFICE_PAN_MAX = 0;
+const DEFAULT_CAMERA_PAN = -12.5;
+// Constant-speed pan: percent of #office width per second. 60 crosses the full
+// 320px of overflow in a little under half a second.
+const OFFICE_PAN_SPEED = 60;
 let cameraPan = DEFAULT_CAMERA_PAN;
 let isCameraUp = false;
 let selectedCamera = '1A';
@@ -31,7 +39,9 @@ let cctvStartTime = Date.now();
 let cctvStartPan = -3;
 let cctvTargetPan = 3;
 let cctvPanX = -3;
-const CCTV_PAN_RANGE = 3; // -3% to +3%
+// The feed sits centred with 160px of plate hidden on each side, so a ±6%
+// (96px) drift stays inside the artwork and never exposes a black edge.
+const CCTV_PAN_RANGE = 6;
 const CCTV_MOVE_DURATION = 2200; // 2.2 seconds (slightly faster slide)
 const CCTV_WAIT_DURATION = 2000; // 2 seconds
 
@@ -69,6 +79,97 @@ function updateCctvPan() {
     }
 
     cameraFeed.style.transform = `translateX(${cctvPanX}%)`;
+}
+
+/* --------------------------- Text plate matting ---------------------------
+   The extracted text assets lost their alpha channel: each one is exactly two
+   flat colours, white text sitting on a solid grey matte. The matte value is
+   not consistent across the set — 90,90,90 on most, 83,83,83 on READY,
+   180,180,180 on the CAM 4B map label — so it is detected rather than assumed.
+
+   Left alone they render as grey boxes floating over the scene. Key the matte
+   back out once per asset and cache the result.
+
+   Detection requires the image to be two colours covering ~all of it, both
+   neutral grey, and keys the darker one. Photographs (the animatronic
+   portraits, the power gauge) have thousands of colours and are left alone —
+   and only elements tagged .text-plate are ever passed in.                  */
+const plateCache = new Map();
+
+function keyOutPlateMatte(src) {
+    if (plateCache.has(src)) return plateCache.get(src);
+
+    const job = new Promise(resolve => {
+        const img = new Image();
+        img.onerror = () => resolve(src);
+        img.onload = () => {
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.naturalWidth;
+                canvas.height = img.naturalHeight;
+                const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                ctx.drawImage(img, 0, 0);
+
+                const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const px = image.data;
+                const total = px.length / 4;
+
+                const tally = new Map();
+                for (let i = 0; i < px.length; i += 4) {
+                    if (px[i + 3] < 250) continue;
+                    const key = (px[i] << 16) | (px[i + 1] << 8) | px[i + 2];
+                    tally.set(key, (tally.get(key) || 0) + 1);
+                }
+
+                const top = [...tally.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2);
+                if (top.length !== 2 || (top[0][1] + top[1][1]) / total < 0.98) { resolve(src); return; }
+
+                const isNeutral = key => {
+                    const r = key >> 16, g = (key >> 8) & 255, b = key & 255;
+                    return Math.abs(r - g) <= 4 && Math.abs(g - b) <= 4;
+                };
+                if (!isNeutral(top[0][0]) || !isNeutral(top[1][0])) { resolve(src); return; }
+
+                // Text is the lighter of the two; the matte is what's behind it.
+                const matte = Math.min(top[0][0] >> 16, top[1][0] >> 16);
+
+                for (let i = 0; i < px.length; i += 4) {
+                    if (Math.abs(px[i] - matte) <= 6 &&
+                        Math.abs(px[i + 1] - matte) <= 6 &&
+                        Math.abs(px[i + 2] - matte) <= 6) {
+                        px[i + 3] = 0;
+                    }
+                }
+                ctx.putImageData(image, 0, 0);
+                resolve(canvas.toDataURL('image/png'));
+            } catch (err) {
+                resolve(src);
+            }
+        };
+        img.src = src;
+    });
+
+    plateCache.set(src, job);
+    return job;
+}
+
+// Use this instead of assigning .src directly on any element carrying .text-plate.
+function setPlateSrc(el, src) {
+    if (!el || !src) return;
+    el.dataset.plateSrc = src;
+    keyOutPlateMatte(src).then(url => {
+        if (el.dataset.plateSrc === src) el.src = url;
+    });
+}
+
+function initTextPlates() {
+    document.querySelectorAll('img.text-plate').forEach(el => {
+        setPlateSrc(el, el.getAttribute('src'));
+    });
+    // Warm the cache for plates that get swapped in mid-game, so the first
+    // camera switch or night intro doesn't flash the un-keyed version.
+    Object.keys(CAMERA_NAMES).forEach(cam => keyOutPlateMatte(`textures/camera/camera names/${cam}.png`));
+    [1, 2, 3, 4, 5, 6, 7].forEach(n => keyOutPlateMatte('textures/main menu/' + getNightIntroFilename(n)));
 }
 
 // Camera name lookup
@@ -177,8 +278,7 @@ function stopSound(name) {
 function unlockAudio() {
     if (audioUnlocked) return;
     audioUnlocked = true;
-    playSound('menuAmbience');
-    playSound('mainMenu2');
+    startMenuMusic();
 }
 
 function playSound(name) {
@@ -197,8 +297,13 @@ function playSound(name) {
 window.addEventListener('pointerdown', unlockAudio, { once: true });
 window.addEventListener('keydown', unlockAudio, { once: true });
 
+// Measure against the letterboxed game frame, not the viewport: on any window
+// that isn't exactly 16:9 there are black bars, and dividing by innerWidth put
+// the pan trigger zones in the wrong place (and never let you reach the edges).
 document.addEventListener('mousemove', (e) => {
-    mouseX = e.clientX / window.innerWidth;
+    const rect = gameWindow.getBoundingClientRect();
+    if (!rect.width) return;
+    mouseX = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
 });
 
 function checkVariants(state) {
@@ -309,15 +414,26 @@ function updateDoorTextureAnimated(doorEl, side, isClosed) {
 
 let isFoxySprinting = false;
 
+const kitchenText = document.getElementById('kitchenText');
+
+function setKitchenTextVisible(visible) {
+    if (kitchenText) kitchenText.style.display = visible ? 'block' : 'none';
+}
+
 function updateCameraTexture(state) {
-    if (isFoxySprinting) return;
+    if (isFoxySprinting) {
+        setKitchenTextVisible(false);
+        return;
+    }
     if (!state || !state.cameraUp) {
         cameraFeed.style.display = 'none';
+        setKitchenTextVisible(false);
         return;
     }
 
     if (cameraBlackoutActive) {
         cameraFeed.style.display = 'none';
+        setKitchenTextVisible(false);
         cameraOverlay.style.backgroundImage = 'none';
         cameraOverlay.style.backgroundColor = '#000';
         return;
@@ -403,10 +519,14 @@ function updateCameraTexture(state) {
     }
 
     if (cam === '6') {
+        // The kitchen camera is dead in the original — black plate plus the
+        // "CAMERA DISABLED / AUDIO ONLY" caption.
         cameraFeed.style.display = 'none';
         cameraOverlay.style.backgroundImage = 'none';
         cameraOverlay.style.backgroundColor = '#000';
+        setKitchenTextVisible(true);
     } else {
+        setKitchenTextVisible(false);
         cameraFeed.src = 'textures/camera/' + imgSrc;
     }
 }
@@ -460,9 +580,7 @@ const jumpscareFrames = {
         'textures/jumpscares/foxy/409.png',
         'textures/jumpscares/foxy/410.png',
         'textures/jumpscares/foxy/411.png',
-        'textures/jumpscares/foxy/412.png',
-        'textures/jumpscares/foxy/413.png',
-        'textures/jumpscares/foxy/415.png'
+        'textures/jumpscares/foxy/412.png'
     ],
     freddy: [
         'textures/jumpscares/freddy/489.png',
@@ -630,20 +748,29 @@ function triggerJumpscare(reason) {
         jumpscare.style.zIndex = '1000';
     }
 
-    // Calculate frame interval so all frames play exactly once in 1 second
+    // Drive the frames off elapsed time rather than a fixed step, so the whole
+    // sheet spans exactly totalDurationMs no matter how many frames it has.
+    // (The old fixed step was floored, so the sheet finished early and looped
+    // back to frame 0 for the remainder — the scare visibly restarted.)
     const totalDurationMs = 1000;
-    const frameIntervalMs = Math.floor(totalDurationMs / anim.length);
+    const startTime = performance.now();
+    let lastIdx = -1;
 
-    let frameIdx = 0;
+    if (jumpscare) jumpscare.src = anim[0];
+
     jumpscareAnimInterval = setInterval(() => {
-        if (frameIdx < anim.length) {
-            if (jumpscare) jumpscare.src = anim[frameIdx];
-            frameIdx++;
-        } else {
-            // Loop back if the timeout hasn't fired yet
-            frameIdx = 0;
+        const progress = (performance.now() - startTime) / totalDurationMs;
+        const idx = Math.min(anim.length - 1, Math.floor(progress * anim.length));
+        if (idx !== lastIdx) {
+            lastIdx = idx;
+            if (jumpscare) jumpscare.src = anim[idx];
         }
-    }, frameIntervalMs);
+        if (idx >= anim.length - 1) {
+            // Hold the final frame until the sequence timeout takes over.
+            clearInterval(jumpscareAnimInterval);
+            jumpscareAnimInterval = null;
+        }
+    }, 8);
 
     // 1. Jumpscare plays for 1 second
     jumpscareSequenceTimeout = setTimeout(() => {
@@ -759,6 +886,7 @@ let foxyRunInterval = null;
 function triggerFoxyRun() {
     isFoxySprinting = true;
     playSound('run');
+    setKitchenTextVisible(false);
 
     const cameraFeed = document.getElementById('cameraFeed');
     const cameraOverlay = document.getElementById('cameraOverlay');
@@ -822,11 +950,11 @@ const cameraAnimFrames = [
     'textures/camera/office cam/11.png'
 ];
 
+// The backdrop behind the feed is just black. (It used to be stretched from
+// `cam assets/<cam>.png`, which are the 31x25 map labels — blown up to 1280x720
+// they flashed as a blurry smear during the flip-up before the plate decoded.)
 function applyCameraBackground() {
-    const camImg = selectedCamera ? `textures/camera/cam assets/${selectedCamera.toLowerCase()}.png` : 'textures/camera/0.png';
-    cameraOverlay.style.backgroundImage = `url('${camImg}')`;
-    cameraOverlay.style.backgroundSize = 'cover';
-    cameraOverlay.style.backgroundRepeat = 'no-repeat';
+    cameraOverlay.style.backgroundImage = 'none';
     cameraOverlay.style.backgroundColor = '#000';
 }
 
@@ -900,10 +1028,7 @@ function selectCamera(cam) {
     }
 
     // Update camera name image on top of map
-    const camNameImg = document.getElementById('camNameImg');
-    if (camNameImg) {
-        camNameImg.src = `textures/camera/camera names/${cam}.png`;
-    }
+    setPlateSrc(document.getElementById('camNameImg'), `textures/camera/camera names/${cam}.png`);
 
     // Play glitch animation on camera switch
     playCamGlitch();
@@ -1280,17 +1405,23 @@ function onServerState(state) {
     if (nightDisplay) nightDisplay.textContent = 'Night ' + currentNight;
 }
 
-function frame() {
+let lastFrameTime = 0;
+
+function frame(now) {
+    const deltaSec = lastFrameTime ? Math.min(0.1, (now - lastFrameTime) / 1000) : 0;
+    lastFrameTime = now;
+
     if (mainMenu.style.display === 'none' && document.getElementById('customNightScreen').style.display === 'none' && document.getElementById('newStartScreen').style.display === 'none') {
         if (isCameraUp) {
             updateCctvPan();
         } else {
+            const step = OFFICE_PAN_SPEED * deltaSec;
             if (mouseX < 0.25) {
-                cameraPan += 2;
+                cameraPan += step;
             } else if (mouseX > 0.75) {
-                cameraPan -= 2;
+                cameraPan -= step;
             }
-            cameraPan = Math.max(-50, Math.min(cameraPan, 0));
+            cameraPan = Math.max(OFFICE_PAN_MIN, Math.min(cameraPan, OFFICE_PAN_MAX));
             office.style.left = cameraPan + "%";
         }
     }
@@ -1527,17 +1658,23 @@ function startMenuEffects() {
         }, delay);
     }
 
+    // The menu portrait sits lit most of the time and drops out for a frame or
+    // two now and then. A constant strobe reads as a broken page, not as FNAF.
     function scheduleNextFlicker() {
         if (mainMenu.style.display === 'none') return;
-        const delay = Math.floor(Math.random() * 250) + 100;
+        const delay = Math.floor(Math.random() * 900) + 250;
         menuFlickerTimeout = setTimeout(() => {
-            if (mainMenu.style.display !== 'none') {
-                const opacities = [1.0, 1.0, 1.0, 0.8, 0.4, 0.0, 0.0, 0.6];
-                const randOpacity = opacities[Math.floor(Math.random() * opacities.length)];
-                menuBg.style.opacity = randOpacity.toString();
+            if (mainMenu.style.display === 'none') return;
 
+            const dip = Math.random() < 0.55 ? '0' : '0.35';
+            menuBg.style.opacity = dip;
+
+            setTimeout(() => {
+                if (mainMenu.style.display !== 'none') {
+                    menuBg.style.opacity = '1';
+                }
                 scheduleNextFlicker();
-            }
+            }, Math.floor(Math.random() * 60) + 40);
         }, delay);
     }
 
@@ -1551,9 +1688,9 @@ function startMenuTwitch() {
 
 function renderMainMenu() {
     const savedNight = Math.min(5, Math.max(1, getSavedNight()));
-    const continueSubhead = document.getElementById('continueSubhead');
-    if (continueSubhead) {
-        continueSubhead.textContent = 'Night ' + savedNight;
+    const continueNight = document.getElementById('continueNight');
+    if (continueNight) {
+        continueNight.textContent = savedNight;
     }
 
     const btnNight6 = document.getElementById('btnNight6');
@@ -1561,8 +1698,8 @@ function renderMainMenu() {
 
     const unlockedNight = parseInt(localStorage.getItem('fnaf_saved_night') || '1', 10);
 
-    if (btnNight6) btnNight6.style.display = unlockedNight >= 6 ? 'block' : 'none';
-    if (btnCustomNight) btnCustomNight.style.display = 'block'; // Available by default
+    if (btnNight6) btnNight6.style.display = unlockedNight >= 6 ? 'flex' : 'none';
+    if (btnCustomNight) btnCustomNight.style.display = 'flex'; // Available by default
 
     // Render stars
     const starsContainer = document.getElementById('starsContainer');
@@ -1609,7 +1746,9 @@ document.getElementById('chicaPlus')?.addEventListener('click', () => adjustCust
 document.getElementById('foxyMinus')?.addEventListener('click', () => adjustCustomAI('foxy', -1));
 document.getElementById('foxyPlus')?.addEventListener('click', () => adjustCustomAI('foxy', 1));
 
+// READY gets the menu blip; BACK and the A.I. arrows deliberately stay silent.
 document.getElementById('btnStartCustom')?.addEventListener('click', () => {
+    playSound('Blip3');
     document.getElementById('customNightScreen').style.display = 'none';
     const is20202020 = customAiLevels.freddy === 20 && customAiLevels.bonnie === 20 && customAiLevels.chica === 20 && customAiLevels.foxy === 20;
     if (is20202020) setSavedStars(3);
@@ -1625,18 +1764,40 @@ document.getElementById('btnBackCustom')?.addEventListener('click', () => {
 const selectorArrow = document.getElementById('selectorArrow');
 document.querySelectorAll('.menu-item').forEach(item => {
     item.addEventListener('mouseenter', () => {
-        if (selectorArrow && item.style.display !== 'none') {
-            const rect = item.getBoundingClientRect();
-            const parentRect = mainMenu.getBoundingClientRect();
-            selectorArrow.style.display = 'block';
-            selectorArrow.style.top = (rect.top - parentRect.top + 4) + 'px';
-            selectorArrow.style.left = (rect.left - parentRect.left - 45) + 'px';
-        }
+        if (item.style.display === 'none') return;
+        // Reveal the "Night n" subhead from the same event that drives the
+        // arrow, so the two can never disagree.
+        item.classList.add('is-hovered');
+        if (!selectorArrow) return;
+
+        // Align the ">>" with the label plate, not the whole item — the
+        // Continue item is taller because of its "Night n" subhead.
+        const label = item.querySelector('img') || item;
+        const rect = label.getBoundingClientRect();
+        const parentRect = mainMenu.getBoundingClientRect();
+
+        // Make it visible before measuring: a display:none element has no box.
+        selectorArrow.style.display = 'block';
+        const arrow = selectorArrow.getBoundingClientRect();
+        const gap = arrow.height * 0.9;
+
+        selectorArrow.style.top = (rect.top - parentRect.top + (rect.height - arrow.height) / 2) + 'px';
+        selectorArrow.style.left = (rect.left - parentRect.left - arrow.width - gap) + 'px';
     });
     item.addEventListener('mouseleave', () => {
+        item.classList.remove('is-hovered');
         if (selectorArrow) selectorArrow.style.display = 'none';
     });
 });
+
+// Coming back from the Custom Night screen must not restart the menu music —
+// that screen never stopped it, so only start it when it isn't already running.
+function startMenuMusic() {
+    const ambience = ensureAudio('menuAmbience');
+    if (ambience && !ambience.paused && !ambience.ended) return;
+    playSound('menuAmbience');
+    playSound('mainMenu2');
+}
 
 function showMainMenu() {
     stopPowerOutageSequence();
@@ -1652,8 +1813,7 @@ function showMainMenu() {
     cameraOverlay.style.display = 'none';
     cameraAnimation.style.display = 'none';
     stopSound('ambience');
-    playSound('menuAmbience');
-    playSound('mainMenu2');
+    startMenuMusic();
     startMenuTwitch();
 }
 
@@ -1664,7 +1824,8 @@ function hideMainMenu() {
     document.getElementById('cameraContainer').style.display = 'block';
     document.getElementById('powerUsage').style.display = 'flex';
     document.getElementById('timeDisplayContainer').style.display = 'flex';
-    document.getElementById('aiDisplay').style.display = 'block';
+    // #aiDisplay is a debug readout — it is never visible in the shipped game.
+    document.getElementById('aiDisplay').style.display = 'none';
     stopSound('menuAmbience');
     stopSound('mainMenu2');
 }
@@ -1687,7 +1848,7 @@ function showNightIntro(night, callback) {
     const nightIntroImg = document.getElementById('nightIntroImg');
 
     if (nightIntroScreen && nightIntroImg) {
-        nightIntroImg.src = 'textures/main menu/' + getNightIntroFilename(night);
+        setPlateSrc(nightIntroImg, 'textures/main menu/' + getNightIntroFilename(night));
         nightIntroScreen.style.display = 'flex';
 
         setTimeout(() => {
@@ -1774,6 +1935,7 @@ function triggerNewStart(callback) {
 }
 
 document.getElementById('btnNewGame')?.addEventListener('click', () => {
+    playSound('Blip3');
     setSavedNight(1);
     triggerNewStart(() => {
         startGame(1);
@@ -1781,19 +1943,24 @@ document.getElementById('btnNewGame')?.addEventListener('click', () => {
 });
 
 document.getElementById('btnContinue')?.addEventListener('click', () => {
+    playSound('Blip3');
     const savedNight = getSavedNight();
     startGame(savedNight);
 });
 
 document.getElementById('btnNight6')?.addEventListener('click', () => {
+    playSound('Blip3');
     startGame(6);
 });
 
 document.getElementById('btnCustomNight')?.addEventListener('click', () => {
+    playSound('Blip3');
     updateCustomAiDisplay();
     mainMenu.style.display = 'none';
     document.getElementById('customNightScreen').style.display = 'flex';
 });
+
+initTextPlates();
 
 window.addEventListener('load', () => {
     showMainMenu();
