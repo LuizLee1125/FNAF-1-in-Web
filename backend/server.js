@@ -245,6 +245,31 @@ function attemptMove(room, name) {
   }
 }
 
+// Any path that removes power has to run through here. Foxy's door knock used
+// to subtract directly, so a knock that emptied the meter left the room sitting
+// at 0% forever: the tick only checks for the outage inside `if (power > 0)`,
+// so `gameEnd/powerOut` was never emitted and the night simply froze.
+function drainPower(roomId, room, amount) {
+  room.power = Math.max(0, room.power - amount);
+  checkPowerOut(roomId, room);
+}
+
+function checkPowerOut(roomId, room) {
+  if (room.power > 0 || room.powerOutTriggered) return;
+
+  room.power = 0;
+  room.doors.left = false;
+  room.doors.right = false;
+  room.lights.left = false;
+  room.lights.right = false;
+  room.cameraUp = false;
+  room.usage = 1;
+  room.powerOutTriggered = true;
+
+  io.to(roomId).emit('stateUpdate', getRoomStatePayload(room));
+  io.to(roomId).emit('gameEnd', { result: 'powerOut' });
+}
+
 function getRoomStatePayload(room) {
   return {
     hour: room.hour,
@@ -304,7 +329,7 @@ function gameTick(roomId) {
           } else {
             foxy.knockCount++;
             const knockDrain = getFoxyKnockDrain(foxy.knockCount);
-            room.power = Math.max(0, room.power - knockDrain);
+            drainPower(roomId, room, knockDrain);
             foxy.foxyStage = 0;
             foxy.sprinting = false;
             foxy.sprintTimerMs = 0;
@@ -326,7 +351,7 @@ function gameTick(roomId) {
         } else {
           foxy.knockCount++;
           const knockDrain = getFoxyKnockDrain(foxy.knockCount);
-          room.power = Math.max(0, room.power - knockDrain);
+          drainPower(roomId, room, knockDrain);
           foxy.foxyStage = 0;
           foxy.sprinting = false;
           foxy.sprintTimerMs = 0;
@@ -366,19 +391,7 @@ function gameTick(roomId) {
   room.usage = usage;
 
   if (room.power > 0) {
-    room.power = Math.max(0, room.power - (POWER_DRAIN_BASE * (deltaMs / 1000) * usage));
-    if (room.power <= 0) {
-      room.doors.left = false;
-      room.doors.right = false;
-      room.lights.left = false;
-      room.lights.right = false;
-      room.cameraUp = false;
-      room.usage = 1;
-      if (!room.powerOutTriggered) {
-        room.powerOutTriggered = true;
-        io.to(roomId).emit('gameEnd', { result: 'powerOut' });
-      }
-    }
+    drainPower(roomId, room, POWER_DRAIN_BASE * (deltaMs / 1000) * usage);
   }
 
   room.broadcastTimerMs += deltaMs;
@@ -518,6 +531,15 @@ io.on('connection', (socket) => {
     io.to(socket.roomId).emit('stateUpdate', getRoomStatePayload(room));
   });
 
+  // The power-outage jumpscare is resolved on the client, so it has to tell us
+  // the run is over — otherwise the room keeps counting up to a 6 AM win.
+  socket.on('playerDied', () => {
+    const room = rooms.get(socket.roomId);
+    if (!room || room.state !== 'playing') return;
+    room.state = 'gameover';
+    stopRoomLoop(socket.roomId);
+  });
+
   socket.on('disconnect', () => {
     const roomId = socket.roomId;
     if (roomId && rooms.has(roomId)) {
@@ -531,6 +553,8 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(3000, () => {
-  console.log('FNAF Backend running on http://localhost:3000');
+const PORT = Number(process.env.PORT) || 3000;
+
+server.listen(PORT, () => {
+  console.log(`FNAF Backend running on http://localhost:${PORT}`);
 });

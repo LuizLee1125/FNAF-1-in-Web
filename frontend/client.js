@@ -3,6 +3,10 @@
 const socket = io();
 
 let gameActive = false;
+// Sticky for the whole run, unlike gameActive which stateUpdate keeps flipping
+// back on. Without it the room kept ticking after a death and the 6 AM win
+// arrived minutes later — on the main menu.
+let runEnded = false;
 let lightState = { left: false, right: false };
 let jammedState = { left: false, right: false };
 
@@ -10,7 +14,17 @@ socket.on('connect', () => {
   console.log('Connected to FNAF Backend');
 });
 
+// Called by script.js the moment the player is jumpscared, including the
+// power-outage scare, which the server has no way of knowing about.
+function endRun() {
+  if (runEnded) return;
+  runEnded = true;
+  gameActive = false;
+  if (socket.connected) socket.emit('playerDied');
+}
+
 socket.on('stateUpdate', (state) => {
+  if (runEnded) return;
   gameActive = true;
   if (state) {
     if (state.lights) {
@@ -41,8 +55,10 @@ socket.on('actionError', (data) => {
 });
 
 socket.on('gameEnd', (data) => {
+  if (runEnded) return;
   gameActive = false;
   if (data.result === 'win') {
+    runEnded = true;
     if (typeof stopPowerOutageSequence === 'function') {
       stopPowerOutageSequence();
     }
@@ -65,7 +81,8 @@ socket.on('gameEnd', (data) => {
 });
 
 socket.on('gameOver', (data) => {
-  gameActive = false;
+  if (runEnded) return;
+  endRun();
   if (typeof triggerJumpscare === 'function') {
     triggerJumpscare(data.reason);
   }
@@ -139,6 +156,7 @@ bindButton(rightButton, 'right');
 
 function joinGame(roomId, night = 1, customAI = null) {
   gameActive = false;
+  runEnded = false;
   socket.emit('joinGame', { roomId, night, customAI });
 }
 

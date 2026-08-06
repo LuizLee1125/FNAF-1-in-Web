@@ -81,6 +81,59 @@ function updateCctvPan() {
     cameraFeed.style.transform = `translateX(${cctvPanX}%)`;
 }
 
+/* ------------------------------ Pixel text --------------------------------
+   The HUD has to read as the same blocky bitmap face as "kitchen txt.png".
+   Decoding that plate shows it is a 5x7 bitmap on a 6x8 cell, upscaled ~3.71x
+   (371x54 for two lines; its row runs repeat in groups of 3-4 pixels).
+
+   No such font ships with the browser, so the text is drawn tiny, thresholded
+   to 1-bit — which is what kills the antialiasing and produces hard square
+   pixels — and then upscaled with image-rendering: pixelated. Each glyph is
+   centred in its own fixed cell so the result stays on an exact monospace grid. */
+const PIXEL_CELL_W = 6;
+const PIXEL_CELL_H = 11;
+const PIXEL_BASELINE = 8;
+const PIXEL_FONT_PX = 11;      // Consolas cap height at 11px ≈ 7px — the plate's
+const PIXEL_ALPHA_CUT = 110;   // coverage below this is dropped, above it is solid
+const PIXEL_UPSCALE_CQH = 0.515; // 3.71px per source pixel against a 720px frame
+// Spelled out rather than read from --fnaf-font: ctx.font silently ignores a
+// value it cannot parse, which would leave the HUD in 10px sans-serif.
+const PIXEL_FONT_STACK = 'Consolas, "Lucida Console", "DejaVu Sans Mono", monospace';
+
+function drawPixelText(canvas, text) {
+    if (!canvas || canvas.dataset.pixelText === text) return;
+    canvas.dataset.pixelText = text;
+
+    const w = Math.max(1, text.length * PIXEL_CELL_W);
+    canvas.width = w;
+    canvas.height = PIXEL_CELL_H;
+
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.clearRect(0, 0, w, PIXEL_CELL_H);
+    ctx.font = `${PIXEL_FONT_PX}px ${PIXEL_FONT_STACK}`;
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = '#fff';
+
+    for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        if (ch === ' ') continue;
+        const advance = ctx.measureText(ch).width;
+        ctx.fillText(ch, i * PIXEL_CELL_W + (PIXEL_CELL_W - advance) / 2, PIXEL_BASELINE);
+    }
+
+    const image = ctx.getImageData(0, 0, w, PIXEL_CELL_H);
+    const px = image.data;
+    for (let i = 0; i < px.length; i += 4) {
+        const on = px[i + 3] > PIXEL_ALPHA_CUT;
+        px[i] = px[i + 1] = px[i + 2] = 255;
+        px[i + 3] = on ? 255 : 0;
+    }
+    ctx.putImageData(image, 0, 0);
+
+    canvas.style.width = (w * PIXEL_UPSCALE_CQH) + 'cqh';
+    canvas.style.height = (PIXEL_CELL_H * PIXEL_UPSCALE_CQH) + 'cqh';
+}
+
 /* --------------------------- Text plate matting ---------------------------
    The extracted text assets lost their alpha channel: each one is exactly two
    flat colours, white text sitting on a solid grey matte. The matte value is
@@ -738,9 +791,21 @@ function triggerJumpscare(reason) {
     }
     if (jumpscareSequenceTimeout) clearTimeout(jumpscareSequenceTimeout);
     if (deathStaticTimeout) clearTimeout(deathStaticTimeout);
+    clearWinTimers();
 
     if (deathStaticScreen) deathStaticScreen.style.display = 'none';
     if (gameOverScreen) gameOverScreen.style.display = 'none';
+
+    // Close the run out on the server too. The power-outage scare is decided
+    // entirely client-side, so without this the room keeps ticking to 6 AM.
+    if (typeof endRun === 'function') endRun();
+
+    // Kill the room the moment the scare lands — the office ambience used to
+    // keep humming underneath it all the way to the Game Over screen.
+    stopSound('ambience');
+    stopSound('on_cam');
+    stopSound('musicBox');
+    stopKitchenOvenSound();
 
     playSound('jumpscare');
     if (jumpscare) {
@@ -748,29 +813,30 @@ function triggerJumpscare(reason) {
         jumpscare.style.zIndex = '1000';
     }
 
-    // Drive the frames off elapsed time rather than a fixed step, so the whole
-    // sheet spans exactly totalDurationMs no matter how many frames it has.
-    // (The old fixed step was floored, so the sheet finished early and looped
-    // back to frame 0 for the remainder — the scare visibly restarted.)
-    const totalDurationMs = 1000;
-    const startTime = performance.now();
-    let lastIdx = -1;
+    // Play at a fixed fast rate rather than stretching the sheet over a fixed
+    // duration: the sheets range from 11 to 28 frames, so a fixed duration made
+    // the short ones crawl at 11fps. 20ms/frame is 50fps for all of them.
+    const FRAME_MS = 20;
+    const MIN_ONSCREEN_MS = 700;
+    const animMs = anim.length * FRAME_MS;
+    const totalDurationMs = Math.max(MIN_ONSCREEN_MS, animMs);
 
+    // Step the index one frame per tick rather than deriving it from elapsed
+    // time: a delayed tick would otherwise skip a frame outright, and every
+    // frame in the sheet has to be shown.
+    let frameIdx = 0;
     if (jumpscare) jumpscare.src = anim[0];
 
     jumpscareAnimInterval = setInterval(() => {
-        const progress = (performance.now() - startTime) / totalDurationMs;
-        const idx = Math.min(anim.length - 1, Math.floor(progress * anim.length));
-        if (idx !== lastIdx) {
-            lastIdx = idx;
-            if (jumpscare) jumpscare.src = anim[idx];
-        }
-        if (idx >= anim.length - 1) {
+        frameIdx++;
+        if (frameIdx < anim.length) {
+            if (jumpscare) jumpscare.src = anim[frameIdx];
+        } else {
             // Hold the final frame until the sequence timeout takes over.
             clearInterval(jumpscareAnimInterval);
             jumpscareAnimInterval = null;
         }
-    }, 8);
+    }, FRAME_MS);
 
     // 1. Jumpscare plays for 1 second
     jumpscareSequenceTimeout = setTimeout(() => {
@@ -782,13 +848,12 @@ function triggerJumpscare(reason) {
         stopSound('jumpscare');
 
         // 2. Full opacity death static screen plays for 3 seconds
-        playSound('garble1');
+        playSound('mainMenu2'); // main_menu1.wav, over the static
         if (deathStaticScreen) {
             deathStaticScreen.style.display = 'block';
         }
 
         deathStaticTimeout = setTimeout(() => {
-            stopSound('garble1');
             if (deathStaticScreen) {
                 deathStaticScreen.style.display = 'none';
             }
@@ -799,16 +864,64 @@ function triggerJumpscare(reason) {
     }, totalDurationMs);
 }
 
-let winSequenceTimeout1 = null;
-let winSequenceTimeout2 = null;
+let winSequenceTimeouts = [];
+
+function clearWinTimers() {
+    winSequenceTimeouts.forEach(t => clearTimeout(t));
+    winSequenceTimeouts = [];
+}
+
+function afterWin(ms, fn) {
+    winSequenceTimeouts.push(setTimeout(fn, ms));
+}
+
+// Nights 5, 6 and 7 each end on their own card; earlier nights just go back to
+// the menu. These three plates ship with the game and were never wired up.
+function getEndCardFilename(night) {
+    if (night === 5) return 'textures/end game/210.png';   // "see you next week"
+    if (night === 6) return 'textures/end game/522.png';   // "you've earned some overtime!"
+    if (night >= 7) return 'textures/end game/523.png';    // notice of termination
+    return null;
+}
+
+function showEndCard(night, callback) {
+    const screen = document.getElementById('endCardScreen');
+    const img = document.getElementById('endCardImg');
+    const file = getEndCardFilename(night);
+
+    if (!screen || !img || !file) {
+        if (typeof callback === 'function') callback();
+        return;
+    }
+
+    let done = false;
+    function finish() {
+        if (done) return;
+        done = true;
+        screen.removeEventListener('click', finish);
+        screen.classList.remove('visible');
+        afterWin(600, () => {
+            screen.style.display = 'none';
+            if (typeof callback === 'function') callback();
+        });
+    }
+
+    img.src = file;
+    screen.style.display = 'flex';
+    void screen.offsetHeight;
+    screen.classList.add('visible');
+
+    screen.addEventListener('click', finish);
+    afterWin(9000, finish);
+}
 
 function triggerWinSequence(callback) {
     const winScreen = document.getElementById('winScreen');
     const winDigit5 = document.getElementById('winDigit5');
     const winDigit6 = document.getElementById('winDigit6');
+    const night = currentNight;
 
-    if (winSequenceTimeout1) clearTimeout(winSequenceTimeout1);
-    if (winSequenceTimeout2) clearTimeout(winSequenceTimeout2);
+    clearWinTimers();
 
     if (!winScreen || !winDigit5 || !winDigit6) {
         if (typeof callback === 'function') callback();
@@ -817,34 +930,42 @@ function triggerWinSequence(callback) {
 
     stopSound('ambience');
     stopSound('on_cam');
+    stopKitchenOvenSound();
     if (typeof stopPowerOutageSequence === 'function') {
         stopPowerOutageSequence();
     }
 
-    // Reset initial digit positions (5 in view, 6 below view)
+    // Reset the roller: 5 in view, 6 waiting below.
     winDigit5.style.transition = 'none';
     winDigit6.style.transition = 'none';
     winDigit5.style.transform = 'translateY(0%)';
     winDigit6.style.transform = 'translateY(0%)';
-
     void winDigit5.offsetHeight;
 
     winScreen.style.display = 'flex';
+    winScreen.classList.remove('visible');
+    void winScreen.offsetHeight;
+    winScreen.classList.add('visible');
     playSound('win');
 
-    // Phase 1: Show 5 AM for 1.5 seconds, then animate 5 sliding up and 6 sliding in
-    winSequenceTimeout1 = setTimeout(() => {
-        winDigit5.style.transition = 'transform 1.8s cubic-bezier(0.4, 0, 0.2, 1)';
-        winDigit6.style.transition = 'transform 1.8s cubic-bezier(0.4, 0, 0.2, 1)';
+    // 5 AM holds briefly, the clock rolls over to 6, then the chime rides out
+    // before the screen fades. The old timing sat on a static 6 AM for 7s.
+    afterWin(900, () => {
+        const roll = 'transform 0.9s cubic-bezier(0.33, 0, 0.2, 1)';
+        winDigit5.style.transition = roll;
+        winDigit6.style.transition = roll;
         winDigit5.style.transform = 'translateY(-100%)';
         winDigit6.style.transform = 'translateY(-100%)';
 
-        winSequenceTimeout2 = setTimeout(() => {
-            stopSound('win');
-            winScreen.style.display = 'none';
-            if (typeof callback === 'function') callback();
-        }, 7000);
-    }, 1500);
+        afterWin(3600, () => {
+            winScreen.classList.remove('visible');
+            afterWin(500, () => {
+                stopSound('win');
+                winScreen.style.display = 'none';
+                showEndCard(night, callback);
+            });
+        });
+    });
 }
 
 const foxyRunFrames = [
@@ -964,6 +1085,8 @@ const glitchFrames = [
     'textures/camera/glitch/8.png',
     'textures/camera/glitch/9.png'
 ];
+// Used by the camera switch and by the night-intro burst — preload so neither stutters.
+glitchFrames.forEach(src => { const img = new Image(); img.src = src; });
 let glitchAnimInterval = null;
 
 function playCamGlitch() {
@@ -1130,6 +1253,51 @@ function closeCamera() {
             sendAction('setCamera', null, false);
         }
     }, 20);
+}
+
+// Flip the monitor down visually without telling the server — used when the
+// power cutting out yanks the camera from the player's hands.
+function playCameraFlipDown(onDone) {
+    isFoxySprinting = false;
+    if (foxyRunInterval) {
+        clearInterval(foxyRunInterval);
+        foxyRunInterval = null;
+    }
+    if (cameraAnimInterval) {
+        clearInterval(cameraAnimInterval);
+        cameraAnimInterval = null;
+    }
+
+    mouseInOverlay = false;
+    stopSound('on_cam');
+    playSound('put_down');
+
+    if (cameraFeed) cameraFeed.style.display = 'none';
+    if (cameraOverlay) cameraOverlay.style.display = 'none';
+    setKitchenTextVisible(false);
+
+    if (!cameraAnimation) {
+        cameraAnimating = false;
+        if (typeof onDone === 'function') onDone();
+        return;
+    }
+
+    cameraAnimating = true;
+    cameraAnimation.style.display = 'block';
+    cameraAnimFrame = cameraAnimFrames.length - 1;
+
+    cameraAnimInterval = setInterval(() => {
+        if (cameraAnimFrame >= 0) {
+            cameraAnimation.src = cameraAnimFrames[cameraAnimFrame];
+            cameraAnimFrame--;
+        } else {
+            clearInterval(cameraAnimInterval);
+            cameraAnimInterval = null;
+            cameraAnimation.style.display = 'none';
+            cameraAnimating = false;
+            if (typeof onDone === 'function') onDone();
+        }
+    }, 18);
 }
 
 function forceCloseCamera() {
@@ -1328,16 +1496,22 @@ function onServerState(state) {
         document.getElementById('aiFx').textContent = state.animatronics.foxy.ai;
     }
 
-    if (timeDisplay) timeDisplay.textContent = (state.hour === 0 ? 12 : state.hour) + ' AM';
-    if (powerDisplay) powerDisplay.textContent = state.power + '%';
+    drawPixelText(timeDisplay, (state.hour === 0 ? 12 : state.hour) + ' AM');
+    drawPixelText(powerDisplay, 'Power left: ' + state.power + '%');
     if (usageDisplay) usageDisplay.textContent = state.usage;
 
     const leftDoor = document.getElementById('leftDoor');
     const rightDoor = document.getElementById('rightDoor');
 
     if (isPowerOutage || state.power <= 0) {
-        if (leftDoor) leftDoor.style.display = 'none';
-        if (rightDoor) rightDoor.style.display = 'none';
+        if (doorsAtPowerOut === null) {
+            doorsAtPowerOut = { left: !!prevDoorState.left, right: !!prevDoorState.right };
+        }
+        // Leave the doors alone while the outage sequence rolls them open.
+        if (!isPowerOutage) {
+            if (leftDoor) leftDoor.style.display = 'none';
+            if (rightDoor) rightDoor.style.display = 'none';
+        }
         prevDoorState = { left: false, right: false };
 
         const leftButtons = document.getElementById('leftButtons');
@@ -1350,7 +1524,9 @@ function onServerState(state) {
 
         isCameraUp = false;
         if (cameraOverlay) cameraOverlay.style.display = 'none';
-        if (cameraAnimation) cameraAnimation.style.display = 'none';
+        // Don't blank the monitor mid-flip — the outage plays the flip-down
+        // animation and this runs again every second while it's still going.
+        if (cameraAnimation && !cameraAnimating) cameraAnimation.style.display = 'none';
         const cameraContainer = document.getElementById('cameraContainer');
         if (cameraContainer) cameraContainer.style.display = 'none';
         canToggleCamera = false;
@@ -1401,8 +1577,7 @@ function onServerState(state) {
     updateOfficeTexture(state);
     updatePowerUsage(state.usage);
 
-    const nightDisplay = document.getElementById('nightDisplay');
-    if (nightDisplay) nightDisplay.textContent = 'Night ' + currentNight;
+    drawPixelText(document.getElementById('nightDisplay'), 'Night ' + currentNight);
 }
 
 let lastFrameTime = 0;
@@ -1429,6 +1604,9 @@ function frame(now) {
 }
 
 let isPowerOutage = false;
+// Door state captured the moment power hit zero — the broadcast that reports it
+// has already zeroed state.doors, so it can't be read back off the state.
+let doorsAtPowerOut = null;
 let powerOutagePhase = 0;
 let powerOutageTimeouts = [];
 let powerOutageIntervals = [];
@@ -1463,6 +1641,7 @@ function clearPowerOutageTimers() {
 
 function stopPowerOutageSequence() {
     isPowerOutage = false;
+    doorsAtPowerOut = null;
     powerOutagePhase = 0;
     clearPowerOutageTimers();
     stopSound('musicBox');
@@ -1489,29 +1668,46 @@ function triggerPowerOutage() {
     stopSound('on_cam');
     playSound('powerdown');
 
-    // Play door sound if any door was closed when power out hits
-    if (prevDoorState.left || prevDoorState.right) {
-        playSound('doorClick');
-    }
-
     // Hide usage bar
     const powerUsage = document.getElementById('powerUsage');
     if (powerUsage) powerUsage.style.display = 'none';
 
-    // Open doors visually
+    // Roll the doors open rather than blanking them, and let the shutter be
+    // heard. The server zeroes `doors` in the same broadcast that reports 0%
+    // power, so read the snapshot taken before that update wiped prevDoorState.
+    const closedAtOutage = doorsAtPowerOut || prevDoorState;
     const leftDoor = document.getElementById('leftDoor');
     const rightDoor = document.getElementById('rightDoor');
-    if (leftDoor) leftDoor.style.display = 'none';
-    if (rightDoor) rightDoor.style.display = 'none';
+
+    if (closedAtOutage.left || closedAtOutage.right) {
+        playSound('doorClick');
+    }
+    if (closedAtOutage.left) {
+        updateDoorTextureAnimated(leftDoor, 'left', false);
+    } else if (leftDoor) {
+        leftDoor.style.display = 'none';
+    }
+    if (closedAtOutage.right) {
+        updateDoorTextureAnimated(rightDoor, 'right', false);
+    } else if (rightDoor) {
+        rightDoor.style.display = 'none';
+    }
     prevDoorState = { left: false, right: false };
 
-    // Force camera down & hide hover bar + disable flipping open
-    isCameraUp = false;
-    if (cameraOverlay) cameraOverlay.style.display = 'none';
-    if (cameraAnimation) cameraAnimation.style.display = 'none';
+    // Force the camera down through the flip-down animation instead of cutting
+    // straight to the office.
     const cameraContainer = document.getElementById('cameraContainer');
     if (cameraContainer) cameraContainer.style.display = 'none';
     canToggleCamera = false;
+
+    if (isCameraUp || cameraAnimating) {
+        playCameraFlipDown();
+    } else {
+        isCameraUp = false;
+        if (cameraOverlay) cameraOverlay.style.display = 'none';
+        if (cameraAnimation) cameraAnimation.style.display = 'none';
+    }
+    isCameraUp = false;
 
     // Hide door & light button panels
     const leftButtons = document.getElementById('leftButtons');
@@ -1746,9 +1942,7 @@ document.getElementById('chicaPlus')?.addEventListener('click', () => adjustCust
 document.getElementById('foxyMinus')?.addEventListener('click', () => adjustCustomAI('foxy', -1));
 document.getElementById('foxyPlus')?.addEventListener('click', () => adjustCustomAI('foxy', 1));
 
-// READY gets the menu blip; BACK and the A.I. arrows deliberately stay silent.
 document.getElementById('btnStartCustom')?.addEventListener('click', () => {
-    playSound('Blip3');
     document.getElementById('customNightScreen').style.display = 'none';
     const is20202020 = customAiLevels.freddy === 20 && customAiLevels.bonnie === 20 && customAiLevels.chica === 20 && customAiLevels.foxy === 20;
     if (is20202020) setSavedStars(3);
@@ -1810,9 +2004,15 @@ function showMainMenu() {
     document.getElementById('timeDisplayContainer').style.display = 'none';
     document.getElementById('jumpscare').style.display = 'none';
     document.getElementById('aiDisplay').style.display = 'none';
+    const endCardScreen = document.getElementById('endCardScreen');
+    if (endCardScreen) {
+        endCardScreen.style.display = 'none';
+        endCardScreen.classList.remove('visible');
+    }
     cameraOverlay.style.display = 'none';
     cameraAnimation.style.display = 'none';
     stopSound('ambience');
+    stopSound('win');
     startMenuMusic();
     startMenuTwitch();
 }
@@ -1824,8 +2024,7 @@ function hideMainMenu() {
     document.getElementById('cameraContainer').style.display = 'block';
     document.getElementById('powerUsage').style.display = 'flex';
     document.getElementById('timeDisplayContainer').style.display = 'flex';
-    // #aiDisplay is a debug readout — it is never visible in the shipped game.
-    document.getElementById('aiDisplay').style.display = 'none';
+    document.getElementById('aiDisplay').style.display = 'block';
     stopSound('menuAmbience');
     stopSound('mainMenu2');
 }
@@ -1843,6 +2042,36 @@ function getNightIntroFilename(night) {
     }
 }
 
+let nightIntroGlitchInterval = null;
+
+// A burst of the camera-glitch frames as the night card comes up, with the
+// blip landing on the same beat.
+function playNightIntroGlitch() {
+    const el = document.getElementById('nightIntroGlitch');
+    if (!el) return;
+
+    if (nightIntroGlitchInterval) {
+        clearInterval(nightIntroGlitchInterval);
+        nightIntroGlitchInterval = null;
+    }
+
+    const frames = [...glitchFrames, ...glitchFrames];
+    let idx = 0;
+    el.src = frames[0];
+    el.style.display = 'block';
+
+    nightIntroGlitchInterval = setInterval(() => {
+        idx++;
+        if (idx < frames.length) {
+            el.src = frames[idx];
+        } else {
+            clearInterval(nightIntroGlitchInterval);
+            nightIntroGlitchInterval = null;
+            el.style.display = 'none';
+        }
+    }, 60);
+}
+
 function showNightIntro(night, callback) {
     const nightIntroScreen = document.getElementById('nightIntroScreen');
     const nightIntroImg = document.getElementById('nightIntroImg');
@@ -1850,6 +2079,8 @@ function showNightIntro(night, callback) {
     if (nightIntroScreen && nightIntroImg) {
         setPlateSrc(nightIntroImg, 'textures/main menu/' + getNightIntroFilename(night));
         nightIntroScreen.style.display = 'flex';
+        playSound('Blip3');
+        playNightIntroGlitch();
 
         setTimeout(() => {
             nightIntroScreen.style.display = 'none';
@@ -1935,7 +2166,6 @@ function triggerNewStart(callback) {
 }
 
 document.getElementById('btnNewGame')?.addEventListener('click', () => {
-    playSound('Blip3');
     setSavedNight(1);
     triggerNewStart(() => {
         startGame(1);
@@ -1943,24 +2173,27 @@ document.getElementById('btnNewGame')?.addEventListener('click', () => {
 });
 
 document.getElementById('btnContinue')?.addEventListener('click', () => {
-    playSound('Blip3');
     const savedNight = getSavedNight();
     startGame(savedNight);
 });
 
 document.getElementById('btnNight6')?.addEventListener('click', () => {
-    playSound('Blip3');
     startGame(6);
 });
 
 document.getElementById('btnCustomNight')?.addEventListener('click', () => {
-    playSound('Blip3');
     updateCustomAiDisplay();
     mainMenu.style.display = 'none';
     document.getElementById('customNightScreen').style.display = 'flex';
 });
 
 initTextPlates();
+
+// Seed the HUD so it is drawn before the first server state arrives.
+drawPixelText(document.getElementById('usageLabel'), 'Usage:');
+drawPixelText(document.getElementById('powerDisplay'), 'Power left: 100%');
+drawPixelText(document.getElementById('timeDisplay'), '12 AM');
+drawPixelText(document.getElementById('nightDisplay'), 'Night 1');
 
 window.addEventListener('load', () => {
     showMainMenu();

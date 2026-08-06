@@ -86,6 +86,7 @@
 
         <div id="nightIntroScreen" style="display:none;">
             <img id="nightIntroImg" class="text-plate" src="" alt="12 AM Night">
+            <img id="nightIntroGlitch" src="" alt="" style="display:none;">
         </div>
 
         <img id="cameraAnimation" src="" alt="Camera Animation" style="display:none;">
@@ -111,17 +112,25 @@
             <img id="winAmText" class="text-plate" src="textures/win/352.png" alt="AM">
         </div>
 
+        <!-- Paycheck / termination card shown after nights 5, 6 and 7. -->
+        <div id="endCardScreen" style="display:none;">
+            <img id="endCardImg" src="" alt="Night complete">
+        </div>
+
+        <!-- HUD readouts are drawn as 1-bit pixel text so they match the blocky
+             plates (see drawPixelText in script.js), not as smooth live text. -->
         <div id="powerUsage">
-            <div class="hud-text">Power left: <span id="powerDisplay">100%</span></div>
-            <div class="hud-text usage-container">
-                Usage: <img id="powerUsageImg" src="textures/power/1 usage.png" alt="Power Usage">
+            <canvas id="powerDisplay" class="pixel-text"></canvas>
+            <div class="usage-container">
+                <canvas id="usageLabel" class="pixel-text"></canvas>
+                <img id="powerUsageImg" src="textures/power/1 usage.png" alt="Power Usage">
                 <div id="usageDisplay" style="display: none;">1</div>
             </div>
         </div>
 
         <div id="timeDisplayContainer">
-            <div id="timeDisplay" class="hud-text">12 AM</div>
-            <div id="nightDisplay" class="hud-text">Night 1</div>
+            <canvas id="timeDisplay" class="pixel-text"></canvas>
+            <canvas id="nightDisplay" class="pixel-text"></canvas>
         </div>
 
         <div id="mainMenu" style="display:none;">
