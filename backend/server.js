@@ -19,8 +19,12 @@ const POWER_DRAIN_BASE = 0.09;
 // Movement opportunity intervals from the original game — each animatronic rolls
 // 1-20 on its own clock and fails the move if the roll exceeds its AI level.
 // Source: Technical-FNAF wiki, "Movement Opportunities (Fnaf 1)".
+// `cameraStall` means "the monitor being up blocks every move, anywhere on the
+// map". Only Foxy works that way. Freddy's stall is conditional — it applies at
+// the 4B corner only, and keys off the selected camera rather than the monitor —
+// so it lives in attemptMove instead of here.
 const MOVEMENT_CONFIG = {
-  freddy: { intervalMs: 3020, cameraStall: true },
+  freddy: { intervalMs: 3020, cameraStall: false },
   bonnie: { intervalMs: 4970, cameraStall: false },
   chica: { intervalMs: 4980, cameraStall: false },
   foxy: { intervalMs: 5010, cameraStall: true }
@@ -201,10 +205,10 @@ function attemptMove(room, name) {
     return;
   }
 
-  // Freddy camera stall check
-  if (name === 'freddy' && room.cameraUp) {
-    return;
-  }
+  // Freddy has no blanket camera stall — he keeps walking whether or not the
+  // monitor is up. His stall is specific to the 4B corner and is handled below,
+  // after the roll, because it is tied to the selected camera rather than to
+  // whether the player happens to be looking at the monitor right now.
 
   const roll = Math.floor(Math.random() * 20) + 1;
   if (roll > state.ai) return;
@@ -230,15 +234,24 @@ function attemptMove(room, name) {
     return;
   }
 
-  // Freddy at 4B corner
+  // Freddy at the 4B corner. Two separate things pin him here, and the order
+  // matters:
+  //
+  // 1. CAM 4B being the selected camera freezes him outright — he fails every
+  //    move and stays at 4B. This holds whether or not the monitor is up, since
+  //    `selectedCamera` survives the flip-down; the player has to actually
+  //    switch to another camera to release him.
+  // 2. Only once he's released does the right door decide where he goes:
+  //    open lets him in, closed sends him back to 4A.
+  //
+  // So the door check is deliberately *after* the camera check — a closed door
+  // does not push him back while the player is still sitting on 4B.
   if (name === 'freddy' && state.location === '4B') {
+    if (room.selectedCamera === '4B') return;
+
     if (room.doors.right) {
-      state.location = '4A'; // Retreat if right door is closed
-    } else if (room.selectedCamera === '4B') {
-      // Condition 3: Player looking at camera 4B or 4B was selected -> Freddy cannot enter office
-      return;
+      state.location = '4A'; // Retreat — the right door is shut
     } else {
-      // Enter office!
       state.location = 'office';
       state.inOffice = true;
     }
@@ -320,7 +333,10 @@ function getRoomStatePayload(room) {
     doors: room.doors,
     lights: room.lights,
     jammed: room.jammed || { left: false, right: false },
-    cameraUp: room.cameraUp
+    cameraUp: room.cameraUp,
+    // Freddy's 4B stall keys off this rather than off `cameraUp`, so it has to be
+    // visible client-side to be debuggable at all.
+    selectedCamera: room.selectedCamera
   };
 }
 
