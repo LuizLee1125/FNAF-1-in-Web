@@ -165,10 +165,12 @@ function bindButton(button, side) {
 bindButton(leftButton, 'left');
 bindButton(rightButton, 'right');
 
-function joinGame(roomId, night = 1, customAI = null) {
+// `cheats` is the enabled-id list from cheats.js. The server freezes it onto the
+// room, so a run keeps whatever was set when it started.
+function joinGame(roomId, night = 1, customAI = null, cheats = []) {
   gameActive = false;
   runEnded = false;
-  socket.emit('joinGame', { roomId, night, customAI });
+  socket.emit('joinGame', { roomId, night, customAI, cheats });
 }
 
 window.addEventListener('load', () => {

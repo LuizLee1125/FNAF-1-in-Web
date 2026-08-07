@@ -32,6 +32,106 @@ let selectedCamera = '1A';
 let currentNight = 1;
 let currentRoomId = null;
 let currentState = null;
+// The AI levels the current run actually started with — `customAiLevels` keeps
+// being edited on the Custom Night screen, so it can't answer "was this 4/20?".
+let currentCustomAI = null;
+
+/* ---------------------------- Cheats in flight -----------------------------
+   The menu can be edited at any time, but a run has to keep the cheats it
+   started with. The authority is therefore the list the server froze onto the
+   room and echoes back in every state payload; the menu's own list only seeds
+   it until the first payload lands. Everything client-side reads runCheatOn(),
+   never isCheatOn(), once a night is underway. */
+let runCheats = new Set();
+
+function setRunCheats(list) {
+    runCheats = new Set(Array.isArray(list) ? list : []);
+}
+
+function runCheatOn(id) {
+    return runCheats.has(id);
+}
+
+/* ---------------------------- Map Hacks (cheat 1) --------------------------
+   Room coordinates are the very percentages the .camera-position markers
+   already carry in index.html, so the dots line up with the map plate for free.
+   The three office-side entries have no marker of their own and are placed by
+   hand along the bottom of the plate. */
+const MAP_DOT_POSITIONS = {
+    '1A': [44.5, 15], '1B': [44.6, 36.5], '1C': [10.4, 46.3],
+    '2A': [31.4, 66], '2B': [31.4, 84], '3': [18.5, 68.8],
+    '4A': [57.5, 66], '4B': [57.5, 84], '5': [7.1, 27.9],
+    '6': [77.2, 65.8], '7': [81, 39.3],
+    'office_door_left': [37.5, 93.5],
+    'office_door_right': [51.5, 93.5],
+    'office': [44.5, 96]
+};
+
+const MAP_DOT_COLORS = {
+    freddy: '#7a4a20',  // brown
+    bonnie: '#6a4fd8',  // blue-ish violet
+    chica: '#c8a800',   // slightly dark yellow
+    foxy: '#c02020'     // red
+};
+
+// Fixed per animatronic rather than computed from who else is in the room, so a
+// dot never jumps sideways just because someone walked in beside it.
+const MAP_DOT_OFFSETS = {
+    freddy: [-2.6, -2.6],
+    bonnie: [2.6, -2.6],
+    chica: [-2.6, 2.6],
+    foxy: [2.6, 2.6]
+};
+
+function renderMapDots(layer, anims) {
+    for (const name of ['freddy', 'bonnie', 'chica', 'foxy']) {
+        let dot = layer.querySelector('.map-dot[data-anim="' + name + '"]');
+        if (!dot) {
+            dot = document.createElement('div');
+            dot.className = 'map-dot';
+            dot.dataset.anim = name;
+            // `color` as well as the fill, so .is-hollow can border-colour off it.
+            dot.style.color = MAP_DOT_COLORS[name];
+            dot.style.backgroundColor = MAP_DOT_COLORS[name];
+            layer.appendChild(dot);
+        }
+
+        const data = anims[name];
+        // Foxy never walks the graph — his location stays 1C and the stage is
+        // what actually advances, so he is pinned to the cove and goes hollow
+        // once it's empty.
+        const room = name === 'foxy' ? '1C' : (data && data.location);
+        const pos = MAP_DOT_POSITIONS[room];
+        if (!pos) {
+            dot.style.display = 'none';
+            continue;
+        }
+
+        const off = MAP_DOT_OFFSETS[name];
+        dot.style.display = 'block';
+        dot.style.left = (pos[0] + off[0]) + '%';
+        dot.style.top = (pos[1] + off[1]) + '%';
+        dot.classList.toggle('is-hollow', name === 'foxy' && !!data && data.foxyStage >= 3);
+    }
+}
+
+function updateMapDots(state) {
+    const on = runCheatOn('mapHacks') && !!state && !!state.animatronics;
+    [document.getElementById('camMapDots'), document.getElementById('officeMapDots')]
+        .forEach(layer => {
+            if (!layer) return;
+            if (!on) {
+                if (layer.childElementCount) layer.innerHTML = '';
+                return;
+            }
+            renderMapDots(layer, state.animatronics);
+        });
+}
+
+function setOfficeMapVisible(visible) {
+    const el = document.getElementById('officeMap');
+    if (el) el.style.display = visible ? 'block' : 'none';
+}
 
 // CCTV pan variables
 let cctvState = 'MOVING'; // 'MOVING' or 'WAITING'
@@ -921,6 +1021,7 @@ function triggerJumpscare(reason) {
     // Close the run out on the server too. The power-outage scare is decided
     // entirely client-side, so without this the room keeps ticking to 6 AM.
     if (typeof endRun === 'function') endRun();
+    if (typeof AIBot !== 'undefined') AIBot.stop();
 
     // Kill the room the moment the scare lands — the office ambience used to
     // keep humming underneath it all the way to the Game Over screen.
@@ -1041,6 +1142,7 @@ function triggerGoldenFreddyJumpscare() {
     if (gameOverScreen) gameOverScreen.style.display = 'none';
 
     if (typeof endRun === 'function') endRun();
+    if (typeof AIBot !== 'undefined') AIBot.stop();
 
     hideGoldenFreddy();
     stopSound('ambience');
@@ -1115,6 +1217,7 @@ function showEndCard(night, callback) {
     }
 
     awardStar(card.star);
+    awardCheatStars(night);
 
     const music = ensureAudio('musicBox');
     let done = false;
@@ -1172,6 +1275,7 @@ function triggerWinSequence(callback) {
         return;
     }
 
+    if (typeof AIBot !== 'undefined') AIBot.stop();
     stopSound('ambience');
     stopSound('on_cam');
     stopChicaKitchenSound();
@@ -1902,6 +2006,10 @@ function onServerState(state) {
     if (!state) return;
     currentState = state;
 
+    // The room's frozen list wins over the menu's from here on.
+    if (state.cheats) setRunCheats(state.cheats);
+    updateMapDots(state);
+
     if (state.cameraUp === false && isCameraUp && !cameraAnimating && !isFoxySprinting) {
         forceCloseCamera();
     }
@@ -2080,7 +2188,8 @@ function frame(now) {
     const deltaSec = lastFrameTime ? Math.min(0.1, (now - lastFrameTime) / 1000) : 0;
     lastFrameTime = now;
 
-    if (mainMenu.style.display === 'none' && document.getElementById('customNightScreen').style.display === 'none' && document.getElementById('newStartScreen').style.display === 'none') {
+    const cheatsScreen = document.getElementById('cheatsScreen');
+    if (mainMenu.style.display === 'none' && document.getElementById('customNightScreen').style.display === 'none' && document.getElementById('newStartScreen').style.display === 'none' && (!cheatsScreen || cheatsScreen.style.display === 'none')) {
         if (isCameraUp) {
             updateCctvPan();
         } else {
@@ -2110,6 +2219,10 @@ let cameraBlackoutTimeout = null;
 let prevHour = null;
 
 function triggerCameraBlackout() {
+    // Map Hacks (cheat 1) drops the blackout entirely, which is what lets the
+    // player watch an animatronic "teleport" between rooms live.
+    if (runCheatOn('mapHacks')) return;
+
     cameraBlackoutActive = true;
     if (cameraBlackoutTimeout) {
         clearTimeout(cameraBlackoutTimeout);
@@ -2124,6 +2237,18 @@ function triggerCameraBlackout() {
             updateCameraTexture(currentState);
         }
     }, 5000);
+}
+
+/* Freddy's countdown in the dark, for phases 2 and 3 alike. Normally a 20% roll
+   on every tick with a 20-second cap. Unlucky (6) takes the very first tick;
+   Super Lucky (7) always runs the full 20 seconds. Phase 1 is left random —
+   only phases 2 and 3 were specified. */
+const OUTAGE_PHASE_CAP_SEC = 20;
+
+function shouldAdvanceOutagePhase(elapsedSec) {
+    if (runCheatOn('unlucky')) return true;
+    if (runCheatOn('superLucky')) return elapsedSec >= OUTAGE_PHASE_CAP_SEC;
+    return Math.random() < 0.2 || elapsedSec >= OUTAGE_PHASE_CAP_SEC;
 }
 
 function clearPowerOutageTimers() {
@@ -2157,6 +2282,9 @@ function triggerPowerOutage() {
     isPowerOutage = true;
     powerOutagePhase = 1;
     clearPowerOutageTimers();
+    // Nothing left for the bot to click, and the office map goes with the lights.
+    if (typeof AIBot !== 'undefined') AIBot.stop();
+    setOfficeMapVisible(false);
 
     stopSound('ambience');
     stopSound('on_cam');
@@ -2246,7 +2374,7 @@ function triggerPowerOutage() {
         const phase2Interval = setInterval(() => {
             if (!isPowerOutage) return;
             phase2Elapsed += 5;
-            if (Math.random() < 0.2 || phase2Elapsed >= 20) {
+            if (shouldAdvanceOutagePhase(phase2Elapsed)) {
                 clearInterval(phase2Interval);
                 clearInterval(flickerInterval);
                 startPhase3();
@@ -2277,7 +2405,7 @@ function triggerPowerOutage() {
         const phase3Interval = setInterval(() => {
             if (!isPowerOutage) return;
             phase3Elapsed += 2;
-            if (Math.random() < 0.2 || phase3Elapsed >= 20) {
+            if (shouldAdvanceOutagePhase(phase3Elapsed)) {
                 clearInterval(phase3Interval);
                 stopPowerOutageSequence();
                 triggerJumpscare('freddy2');
@@ -2296,20 +2424,61 @@ function setSavedNight(night) {
     localStorage.setItem('fnaf_saved_night', night.toString());
 }
 
-/* Three independent stars, each in a fixed slot on the menu:
-   left  — cleared night 5
-   mid   — cleared the 6th night
-   right — cleared the 7th / custom night
-   They are separate flags rather than a count so a later clear can't imply an
-   earlier one, and so each lands in its own slot. */
-const STAR_KEYS = ['fnaf_star_night5', 'fnaf_star_night6', 'fnaf_star_night7'];
+/* Independent stars, each in a fixed slot on the menu. They are separate flags
+   rather than a count so a later clear can't imply an earlier one, and so each
+   lands in its own slot.
+
+   0 — cleared night 5          3 — Golden Freddy cheat
+   1 — cleared the 6th night    4 — Power Loss cheat
+   2 — cleared the 7th night    5 — Insta Bonnie Chica cheat
+                                6 — Unlucky cheat
+                                7 — Real Time cheat
+                                8 — Speed cheat
+
+   Slots 3-8 are earned only by clearing Night 7 at 4/20 with that cheat on; see
+   awardCheatStars. The starIndex values live in cheats.js. */
+const STAR_KEYS = [
+    'fnaf_star_night5', 'fnaf_star_night6', 'fnaf_star_night7',
+    'fnaf_star_golden', 'fnaf_star_powerloss', 'fnaf_star_instabc',
+    'fnaf_star_unlucky', 'fnaf_star_realtime', 'fnaf_star_speed'
+];
+
+// CSS classes per slot. Empty for the original three, which stay plain <img>.
+const STAR_STYLES = [
+    '', '', '',
+    'cheat-star star-gold',
+    'cheat-star star-green',
+    'cheat-star star-purpleyellow',
+    'cheat-star star-multi',
+    'cheat-star star-rainbow star-big',
+    'cheat-star star-red star-pulse'
+];
 
 function hasStar(index) {
     return localStorage.getItem(STAR_KEYS[index]) === '1';
 }
 
+/* The single gate for every star in the game. Putting it here rather than at the
+   call sites is what makes "cheats that forfeit the night 5/6/7 stars also
+   forfeit the cheat stars" fall out for free — nothing can write a star past it. */
 function awardStar(index) {
+    if (typeof anyStarBlockingCheatOn === 'function' && anyStarBlockingCheatOn()) return;
     if (STAR_KEYS[index]) localStorage.setItem(STAR_KEYS[index], '1');
+}
+
+// 4/20 means all four Custom Night sliders at 20.
+function isFourTwentyRun() {
+    const ai = currentCustomAI;
+    if (!ai) return false;
+    return ['freddy', 'bonnie', 'chica', 'foxy'].every(name => ai[name] === 20);
+}
+
+// Called on a Night 7 win. awardStar still has the final say, so a run with a
+// blocking cheat on writes nothing here either.
+function awardCheatStars(night) {
+    if (night !== 7 || !isFourTwentyRun()) return;
+    if (typeof activeStarGrantingCheats !== 'function') return;
+    activeStarGrantingCheats().forEach(cheat => awardStar(cheat.starIndex));
 }
 
 // A cleared 5th night is what opens the 6th.
@@ -2401,18 +2570,30 @@ function renderMainMenu() {
     if (btnNight6) btnNight6.style.visibility = isNight6Unlocked() ? 'visible' : 'hidden';
     if (btnCustomNight) btnCustomNight.style.display = 'flex'; // always available
 
-    // Three fixed star slots — an unearned star leaves its slot empty.
+    /* The original three keep fixed slots, so an unearned one leaves a gap and
+       the others don't shuffle. The six cheat stars are appended only once
+       earned — reserving empty slots for them would leave a permanent run of
+       blank space under the title for anyone who never touches the cheats. */
     const starsContainer = document.getElementById('starsContainer');
     if (starsContainer) {
         starsContainer.innerHTML = '';
         for (let i = 0; i < STAR_KEYS.length; i++) {
+            const earned = hasStar(i);
+            const isCheatStar = i >= 3;
+            if (isCheatStar && !earned) continue;
+
             const slot = document.createElement('div');
             slot.className = 'star-slot';
-            if (hasStar(i)) {
-                const img = document.createElement('img');
-                img.src = 'textures/main menu/star.png';
-                img.alt = 'Star';
-                slot.appendChild(img);
+            if (earned) {
+                if (isCheatStar) {
+                    // Masked div: the fill is a colour or an animation, not a bitmap.
+                    slot.className += ' ' + STAR_STYLES[i];
+                } else {
+                    const img = document.createElement('img');
+                    img.src = 'textures/main menu/star.png';
+                    img.alt = 'Star';
+                    slot.appendChild(img);
+                }
             }
             starsContainer.appendChild(slot);
         }
@@ -2476,6 +2657,87 @@ document.getElementById('btnBackCustom')?.addEventListener('click', () => {
     showMainMenu();
 });
 
+/* ------------------------------ Cheats menu -------------------------------
+   Rows are built from the CHEATS array in cheats.js rather than written out in
+   index.html, so a cheat is added in exactly one place. */
+function renderCheatsList() {
+    const list = document.getElementById('cheatsList');
+    const warning = document.getElementById('cheatsWarning');
+    if (!list) return;
+
+    list.innerHTML = '';
+
+    CHEATS.forEach(cheat => {
+        const on = isCheatOn(cheat.id);
+        const locked = isCheatLocked(cheat.id);
+
+        const row = document.createElement('div');
+        row.className = 'cheat-row' + (on ? ' is-on' : '') + (locked ? ' is-locked' : '');
+
+        const num = document.createElement('div');
+        num.className = 'cheat-num';
+        num.textContent = cheat.num + '.';
+
+        const text = document.createElement('div');
+        text.className = 'cheat-text';
+
+        const name = document.createElement('div');
+        name.className = 'cheat-name';
+        name.textContent = cheat.name;
+
+        const desc = document.createElement('div');
+        desc.className = 'cheat-desc';
+        // Say *why* it can't be turned on rather than just greying it out.
+        desc.textContent = locked
+            ? 'Locked while ' + getCheat(cheat.mutex).name + ' is on.'
+            : cheat.desc;
+
+        const toggle = document.createElement('div');
+        toggle.className = 'cheat-toggle';
+        toggle.textContent = locked ? '--' : (on ? 'ON' : 'OFF');
+
+        text.appendChild(name);
+        text.appendChild(desc);
+        row.appendChild(num);
+        row.appendChild(text);
+
+        row.appendChild(toggle);
+
+        if (!locked) {
+            row.addEventListener('click', () => {
+                toggleCheat(cheat.id);
+                playSound('Blip3');
+                renderCheatsList();
+            });
+        }
+
+        list.appendChild(row);
+    });
+
+    if (warning) {
+        warning.textContent = anyStarBlockingCheatOn()
+            ? 'No stars can be earned with these cheats on.'
+            : '';
+    }
+}
+
+function showCheatsScreen() {
+    renderCheatsList();
+    mainMenu.style.display = 'none';
+    const screen = document.getElementById('cheatsScreen');
+    if (screen) screen.style.display = 'flex';
+}
+
+document.getElementById('btnCheats')?.addEventListener('click', () => {
+    showCheatsScreen();
+});
+
+document.getElementById('btnBackCheats')?.addEventListener('click', () => {
+    const screen = document.getElementById('cheatsScreen');
+    if (screen) screen.style.display = 'none';
+    showMainMenu();
+});
+
 // Setup hover selector arrow positioning
 const selectorArrow = document.getElementById('selectorArrow');
 document.querySelectorAll('.menu-item').forEach(item => {
@@ -2519,9 +2781,14 @@ function startMenuMusic() {
 function showMainMenu() {
     stopPowerOutageSequence();
     resetGoldenFreddy();
+    if (typeof AIBot !== 'undefined') AIBot.stop();
     renderMainMenu();
     mainMenu.style.display = 'flex';
     document.getElementById('customNightScreen').style.display = 'none';
+    const cheatsScreen = document.getElementById('cheatsScreen');
+    if (cheatsScreen) cheatsScreen.style.display = 'none';
+    setOfficeMapVisible(false);
+    updateMapDots(null);
     office.style.display = 'none';
     document.getElementById('cameraContainer').style.display = 'none';
     document.getElementById('powerUsage').style.display = 'none';
@@ -2548,6 +2815,9 @@ function showMainMenu() {
 function hideMainMenu() {
     mainMenu.style.display = 'none';
     document.getElementById('customNightScreen').style.display = 'none';
+    const cheatsScreen = document.getElementById('cheatsScreen');
+    if (cheatsScreen) cheatsScreen.style.display = 'none';
+    setOfficeMapVisible(runCheatOn('mapHacks'));
     office.style.display = 'block';
     document.getElementById('cameraContainer').style.display = 'block';
     document.getElementById('powerUsage').style.display = 'flex';
@@ -2625,8 +2895,17 @@ function startGame(night, customAI = null) {
     stopPowerOutageSequence();
     stopNightCall();
     resetGoldenFreddy();
+    if (typeof AIBot !== 'undefined') AIBot.stop();
     canToggleCamera = true;
     currentNight = night;
+    /* Drop the finished run's state. joinGame is a socket round trip, so without
+       this there is a window where the new night is underway while currentState
+       still describes the last one — and anything reading it, the AI bot most of
+       all, acts on positions and AI levels that belong to a different shift. */
+    currentState = null;
+    // Snapshot both, so nothing edited on a menu mid-run can change this night.
+    currentCustomAI = customAI ? { ...customAI } : null;
+    setRunCheats(getEnabledCheats());
     currentRoomId = 'room_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
 
     prevDoorState = { left: null, right: null };
@@ -2648,10 +2927,11 @@ function startGame(night, customAI = null) {
 
     hideMainMenu();
     showNightIntro(night, () => {
-        joinGame(currentRoomId, night, customAI);
+        joinGame(currentRoomId, night, customAI, getEnabledCheats());
         startPirateSongRolls();
         // Counted from the moment the shift actually starts, not from the card.
         startNightCall(night);
+        if (runCheatOn('aiMode') && typeof AIBot !== 'undefined') AIBot.start();
     });
 }
 

@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Five Nights at Freddy's</title>
-    <link rel="stylesheet" href="style.css?v=3">
+    <link rel="stylesheet" href="style.css?v=4">
 </head>
 
 <body>
@@ -49,6 +49,9 @@
                 <img id="camNameImg" class="text-plate" src="textures/camera/camera names/1A.png" alt="Camera Name">
                 <img id="camMapBg" src="textures/camera/cam assets/cam map.png" alt="Cam Map">
 
+                <!-- Map Hacks (cheat 1) fills this; empty and inert otherwise. -->
+                <div class="map-dots" id="camMapDots"></div>
+
                 <div class="camera-position active" data-cam="1A" style="left:44.5%; top:15%;">
                     <img class="text-plate" src="textures/camera/cam assets/1a.png" alt="1A">
                 </div>
@@ -88,6 +91,14 @@
         <!-- Sits in the frame rather than in #office or #cameraOverlay, so it holds
              the same spot beside the red dot whichever of the two is on screen. -->
         <img id="muteCall" src="textures/office/misc/mute call.png" alt="Mute call" style="display:none;">
+
+        <!-- Map Hacks (cheat 1). Deliberately a sibling of #office rather than a
+             child, so it stays pinned to the corner while the room pans. Sits
+             below #cameraOverlay's z-index, so raising the monitor covers it. -->
+        <div id="officeMap" style="display:none;">
+            <img src="textures/camera/cam assets/cam map.png" alt="">
+            <div class="map-dots" id="officeMapDots"></div>
+        </div>
 
         <div id="newStartScreen" style="display:none;">
             <img id="newStartImg" src="textures/main menu/new start.png" alt="Help Wanted - New Start">
@@ -170,6 +181,11 @@
                 <div id="btnCustomNight" class="menu-item" style="display: none;">
                     <img class="text-plate" src="textures/main menu/custom night menu.png" alt="Custom Night">
                 </div>
+                <!-- No "Cheats" plate ships with the game's assets, so this one
+                     label is live text dressed to match the keyed-out plates. -->
+                <div id="btnCheats" class="menu-item">
+                    <span class="menu-live-label">Cheats</span>
+                </div>
             </div>
 
             <div id="creditText">Web recreation by Luiz Lee</div>
@@ -225,11 +241,23 @@
                 <div id="btnBackCustom" class="custom-back-btn">BACK</div>
             </div>
         </div>
+
+        <!-- Rows are built in script.js from the CHEATS array in cheats.js. -->
+        <div id="cheatsScreen" style="display:none;">
+            <div class="cheats-title">CHEATS</div>
+            <div class="cheats-list" id="cheatsList"></div>
+            <div class="cheats-footer">
+                <div class="cheats-warning" id="cheatsWarning"></div>
+                <div id="btnBackCheats" class="custom-back-btn">BACK</div>
+            </div>
+        </div>
     </div>
 
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-    <script src="client.js?v=2"></script>
-    <script src="script.js?v=3"></script>
+    <script src="cheats.js?v=1"></script>
+    <script src="client.js?v=3"></script>
+    <script src="script.js?v=4"></script>
+    <script src="aibot.js?v=1"></script>
 </body>
 
 </html>

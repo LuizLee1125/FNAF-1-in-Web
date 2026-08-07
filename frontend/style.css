@@ -667,6 +667,9 @@ body {
     position: relative;
     z-index: 2;
     display: flex;
+    /* Centred rather than stretched: the rainbow cheat star is deliberately
+       taller than the row and has to overflow evenly above and below. */
+    align-items: center;
     gap: 1.1cqh;
     margin-bottom: 4cqh;
     height: 3.8cqh;
@@ -895,4 +898,271 @@ body {
 
 .custom-back-btn:hover {
     color: #fff;
+}
+
+/* ------------------------------- Cheat stars ------------------------------
+   Slots 0-2 are the original three and stay plain <img src="star.png">.
+   Slots 3-8 are the cheat stars: the same PNG is used as a *mask* instead, so
+   the silhouette is preserved while the fill becomes a flat colour, a colour
+   cycle, or a hue rotation. Anything else (tint filters, recoloured copies of
+   the asset) either loses the shape or needs six more PNGs.                 */
+.star-slot.cheat-star {
+    -webkit-mask-image: url('textures/main menu/star.png');
+    mask-image: url('textures/main menu/star.png');
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+    background-color: #fff;
+}
+
+/* 4th — Golden Freddy */
+.star-slot.star-gold {
+    background-color: #ffc522;
+}
+
+/* 5th — Power Loss */
+.star-slot.star-green {
+    background-color: #35d94a;
+}
+
+/* 6th — Insta Bonnie Chica */
+.star-slot.star-purpleyellow {
+    animation: starPurpleYellow 2.2s steps(1, end) infinite;
+}
+
+@keyframes starPurpleYellow {
+    0% { background-color: #a03cd8; }
+    50% { background-color: #e8d43a; }
+}
+
+/* 7th — Unlucky: brown, purple, yellow, red, gold */
+.star-slot.star-multi {
+    animation: starMulti 4s steps(1, end) infinite;
+}
+
+@keyframes starMulti {
+    0% { background-color: #7a4a20; }
+    20% { background-color: #a03cd8; }
+    40% { background-color: #e8d43a; }
+    60% { background-color: #e02020; }
+    80% { background-color: #ffc522; }
+}
+
+/* 8th — Real Time. The only star that breaks the row's height. */
+.star-slot.star-rainbow {
+    animation: starRainbow 3s linear infinite;
+}
+
+.star-slot.star-big {
+    width: 6.3cqh;
+    height: 6.3cqh;
+    flex: 0 0 auto;
+}
+
+@keyframes starRainbow {
+    0% { background-color: #ff2d2d; }
+    16% { background-color: #ff9a2d; }
+    33% { background-color: #ffe92d; }
+    50% { background-color: #3ddc4a; }
+    66% { background-color: #2d9aff; }
+    83% { background-color: #a03cd8; }
+    100% { background-color: #ff2d2d; }
+}
+
+/* 9th — Speed */
+.star-slot.star-red {
+    background-color: #e02020;
+}
+
+.star-slot.star-pulse {
+    animation: starPulse 0.9s ease-in-out infinite;
+}
+
+@keyframes starPulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.28); opacity: 0.55; }
+}
+
+/* ------------------------------ Cheats menu -------------------------------
+   Same flat black sheet as Custom Night: no cards, no borders, no rounded
+   corners. The one departure is that every label here is live text — the
+   game ships no plates for any of this.                                    */
+/* The label plates are cropped tight to their ink, so a 4.6cqh plate is the full
+   ascender-to-descender extent — about a 4.9cqh Consolas size. Matching the box
+   height instead would render this one label visibly smaller than the rest. */
+.menu-live-label {
+    display: block;
+    font-family: var(--fnaf-font);
+    font-size: 4.9cqh;
+    line-height: 4.6cqh;
+    color: #fff;
+}
+
+#cheatsScreen {
+    position: absolute;
+    inset: 0;
+    z-index: 600;
+    background-color: #000;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-family: var(--fnaf-font);
+    padding: 3cqh 4cqh;
+    box-sizing: border-box;
+}
+
+.cheats-title {
+    font-size: 5cqh;
+    margin-bottom: 2.6cqh;
+    letter-spacing: 0.3cqh;
+}
+
+.cheats-list {
+    display: flex;
+    flex-direction: column;
+    width: 108cqh;
+    max-width: 100%;
+    gap: 0.5cqh;
+}
+
+.cheat-row {
+    display: flex;
+    align-items: center;
+    gap: 1.6cqh;
+    padding: 0.5cqh 0;
+    cursor: pointer;
+    color: #9a9a9a;
+    transition: color 0.1s ease;
+}
+
+.cheat-row:hover {
+    color: #fff;
+}
+
+.cheat-num {
+    width: 4cqh;
+    text-align: right;
+    font-size: 2.7cqh;
+    flex: 0 0 auto;
+}
+
+.cheat-text {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.cheat-name {
+    font-size: 2.9cqh;
+    line-height: 1.1;
+}
+
+.cheat-desc {
+    font-size: 1.9cqh;
+    line-height: 1.2;
+    color: #6a6a6a;
+    margin-top: 0.2cqh;
+}
+
+.cheat-toggle {
+    flex: 0 0 auto;
+    width: 8cqh;
+    text-align: right;
+    font-size: 2.7cqh;
+    color: #6a6a6a;
+}
+
+.cheat-row.is-on {
+    color: #fff;
+}
+
+.cheat-row.is-on .cheat-toggle {
+    color: #35d94a;
+}
+
+/* Blocked by its mutually exclusive partner — visibly inert, not hidden, so it
+   is obvious *why* it won't turn on. */
+.cheat-row.is-locked {
+    cursor: default;
+    color: #3d3d3d;
+}
+
+.cheat-row.is-locked:hover {
+    color: #3d3d3d;
+}
+
+.cheat-row.is-locked .cheat-desc,
+.cheat-row.is-locked .cheat-toggle {
+    color: #2e2e2e;
+}
+
+.cheats-footer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.4cqh;
+    margin-top: 2.6cqh;
+}
+
+.cheats-warning {
+    font-size: 2.1cqh;
+    color: #b03030;
+    min-height: 2.4cqh;
+    text-align: center;
+}
+
+/* --------------------------- Map Hacks (cheat 1) --------------------------
+   The office copy of the map plate. Matches the camera map's box exactly, but
+   is pinned to the frame rather than to #office so it holds the corner while
+   the room pans. z-index sits under #cameraOverlay (50) so raising the monitor
+   still covers it, and pointer-events are off so it can never swallow a click
+   meant for the camera tab underneath. */
+#officeMap {
+    position: absolute;
+    bottom: 7cqh;
+    right: 5cqh;
+    width: 48cqh;
+    height: 48cqh;
+    z-index: 45;
+    pointer-events: none;
+}
+
+#officeMap > img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+    opacity: 0.9;
+}
+
+/* Shared by both maps. Coordinates come from MAP_DOT_POSITIONS in script.js,
+   which reuses the same percentages the .camera-position markers already use. */
+.map-dots {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    pointer-events: none;
+}
+
+.map-dot {
+    position: absolute;
+    width: 4.6%;
+    height: 4.6%;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    border: 0.35cqh solid rgba(0, 0, 0, 0.75);
+    box-sizing: border-box;
+    box-shadow: 0 0 0.6cqh rgba(0, 0, 0, 0.9);
+}
+
+/* Foxy goes hollow once the cove is empty — he is no longer *at* 1C in any
+   sense the player can act on. */
+.map-dot.is-hollow {
+    background-color: transparent !important;
+    border-color: currentColor;
 }

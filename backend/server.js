@@ -40,6 +40,58 @@ const GOLDEN_OFFICE_DURATION_MS = 4000;
 // can land a second appearance immediately.
 const GOLDEN_RESPAWN_COOLDOWN_MS = 30000;
 
+/* ------------------------------- Cheats -----------------------------------
+   The enabled list arrives with joinGame and is frozen onto the room, so a run
+   keeps the cheats it started with even if the player edits the menu mid-night.
+
+   Two clock multipliers come out of it and are read everywhere a timer is set:
+
+     timeScale  Real Time (8). Stretches the *night* — the hour length and, in
+                inverse, the power drain. 60 real minutes per in-game hour.
+     speedMult  Speed (9). Halves animatronic movement intervals only; it must
+                not touch the power drain.
+     clockMult  The product. Everything that is an animatronic opportunity clock
+                scales by this.
+
+   The line drawn throughout: opportunity clocks scale, player reaction windows
+   never do. Stretching Golden Freddy's 4s in the office, or Foxy's door-close
+   window, to four minutes would retire both threats outright.               */
+const REAL_TIME_SCALE = 60;
+const SPEED_MULTIPLIER = 0.5;
+
+const GOLDEN_CHEAT_AI = 50;
+const GOLDEN_CHEAT_DENOMINATOR = 1000;
+const GOLDEN_CHEAT_ROLL_INTERVAL_MS = 500;
+const GOLDEN_CHEAT_COOLDOWN_MS = 5000;
+
+// Foxy's window from the sprint starting to the left door having to be shut.
+// A reaction window, so Real Time leaves it alone.
+const FOXY_SPRINT_WINDOW_MS = 3000;
+// How long he waits at an empty cove before running on his own.
+const FOXY_SPRINT_WAIT_MS = 30000;
+
+// Hop counts to the office door, used by Unlucky (6) and Super Lucky (7) to
+// replace the random pick with the nearest / furthest neighbour. Derived from
+// MOVEMENT_GRAPH; the door itself is 0 so Super Lucky never chooses it when it
+// has any alternative.
+const OFFICE_DISTANCE = {
+  bonnie: { office_door_left: 0, '2B': 1, '2A': 2, '3': 2, '1B': 3, '5': 3, '1A': 4 },
+  chica: { office_door_right: 0, '4B': 1, '4A': 2, '6': 3, '7': 3, '1B': 3, '1A': 4 }
+};
+
+function hasCheat(room, id) {
+  return !!(room && room.cheats && room.cheats.has(id));
+}
+
+// 3-17s normally; the two luck cheats pin it to an end of that range.
+function rollFoxyStallMs(room) {
+  let seconds;
+  if (hasCheat(room, 'unlucky')) seconds = 3;
+  else if (hasCheat(room, 'superLucky')) seconds = 17;
+  else seconds = Math.random() * 14 + 3;
+  return Math.floor(seconds * 1000 * room.clockMult);
+}
+
 // A flat value per hour rather than the sparse `{hour, ...}` shape AI_SCHEDULES
 // uses — nights 3 and 4 change every single hour, so the sparse form would just
 // be six entries anyway. Index 0 is 12 AM.
@@ -125,7 +177,9 @@ const AI_SCHEDULES = {
 const rooms = new Map();
 const roomIntervals = new Map();
 
-function getFoxyKnockDrain(knockCount) {
+// Power Loss (4) skips the ramp and knocks the full 21% off from the first one.
+function getFoxyKnockDrain(knockCount, room) {
+  if (hasCheat(room, 'powerLoss')) return 21;
   if (knockCount <= 1) return 1;
   if (knockCount === 2) return 6;
   if (knockCount === 3) return 11;
@@ -133,19 +187,32 @@ function getFoxyKnockDrain(knockCount) {
   return 21; // 5th or more knock
 }
 
-function createRoom(roomId, night, customAI) {
+function createRoom(roomId, night, customAI, cheats) {
   const initialAI = customAI || getAIForHour({ night: night || 1 }, 0);
   const now = Date.now();
+  const cheatSet = new Set(Array.isArray(cheats) ? cheats : []);
+
+  const timeScale = cheatSet.has('realTime') ? REAL_TIME_SCALE : 1;
+  const speedMult = cheatSet.has('speed') ? SPEED_MULTIPLIER : 1;
+
+  // Insta Bonnie Chica (5) drops them straight at the hall corners. Freddy is
+  // held on stage until both leave 1A, so this also frees him from the off.
+  const instaBC = cheatSet.has('instaBonnieChica');
+
   return {
     id: roomId,
     night: night || 1,
     customAI: customAI || null,
+    cheats: cheatSet,
+    timeScale,
+    speedMult,
+    clockMult: timeScale * speedMult,
     state: 'waiting',
     hour: 0,
     hourTimerMs: 0,
     broadcastTimerMs: 0,
     lastTickTime: now,
-    power: 100.0,
+    power: cheatSet.has('powerLoss') ? 80.0 : 100.0,
     usage: 1,
     players: [],
     doors: { left: false, right: false },
@@ -155,15 +222,17 @@ function createRoom(roomId, night, customAI) {
     selectedCamera: '1A',
     animatronics: {
       freddy: { location: '1A', ai: initialAI.freddy, movementTimerMs: 0, inOffice: false },
-      bonnie: { location: '1A', ai: initialAI.bonnie, movementTimerMs: 0, inOffice: false, readyToJumpscare: false },
-      chica: { location: '1A', ai: initialAI.chica, movementTimerMs: 0, inOffice: false, readyToJumpscare: false },
+      bonnie: { location: instaBC ? '2B' : '1A', ai: initialAI.bonnie, movementTimerMs: 0, inOffice: false, readyToJumpscare: false },
+      chica: { location: instaBC ? '4B' : '1A', ai: initialAI.chica, movementTimerMs: 0, inOffice: false, readyToJumpscare: false },
       foxy: { location: '1C', ai: initialAI.foxy, movementTimerMs: 0, foxyStage: 0, stallTimerMs: 0, sprintTimerMs: 0, sprinting: false, sprintWindowMs: 0, knockCount: 0 },
-      goldenFreddy: { ai: getGoldenFreddyAI(night || 1, 0), rollTimerMs: 0, active: false, activeMs: 0, cooldownMs: 0 }
+      goldenFreddy: { ai: getGoldenFreddyAI(night || 1, 0, cheatSet.has('goldenFreddy')), rollTimerMs: 0, active: false, activeMs: 0, cooldownMs: 0 }
     }
   };
 }
 
-function getGoldenFreddyAI(night, hour) {
+function getGoldenFreddyAI(night, hour, cheatOn) {
+  // Cheat 3 flattens the whole table: 50 from 12 AM to 6 AM on every night.
+  if (cheatOn) return GOLDEN_CHEAT_AI;
   const table = GOLDEN_FREDDY_AI[night] || GOLDEN_FREDDY_AI[1];
   return table[Math.min(hour, table.length - 1)];
 }
@@ -210,8 +279,15 @@ function attemptMove(room, name) {
   // after the roll, because it is tied to the selected camera rather than to
   // whether the player happens to be looking at the monitor right now.
 
-  const roll = Math.floor(Math.random() * 20) + 1;
-  if (roll > state.ai) return;
+  // Unlucky (6) skips the roll outright — anything with AI left always moves.
+  // Super Lucky (7) fails everything below AI 20; at 20 the move lands, but the
+  // pathing below makes sure it never gets anywhere.
+  if (hasCheat(room, 'superLucky')) {
+    if (state.ai < 20) return;
+  } else if (!hasCheat(room, 'unlucky')) {
+    const roll = Math.floor(Math.random() * 20) + 1;
+    if (roll > state.ai) return;
+  }
 
   // Freddy won't leave 1A until Bonnie and Chica leave 1A
   if (name === 'freddy' && state.location === '1A') {
@@ -226,7 +302,7 @@ function attemptMove(room, name) {
       state.foxyStage++;
       if (state.foxyStage === 3) {
         state.location = '1C'; // Empty cove
-        state.sprintTimerMs = 30000; // 30 seconds wait timer
+        state.sprintTimerMs = Math.floor(FOXY_SPRINT_WAIT_MS * room.clockMult);
         state.sprinting = false;
         state.sprintWindowMs = 0;
       }
@@ -260,7 +336,7 @@ function attemptMove(room, name) {
 
   // Bonnie at Left Door
   if (name === 'bonnie' && state.location === 'office_door_left') {
-    if (!room.doors.left) {
+    if (!room.doors.left && !hasCheat(room, 'superLucky')) {
       // Enter office & jam left buttons and turn off left light
       state.location = 'office';
       state.inOffice = true;
@@ -268,14 +344,14 @@ function attemptMove(room, name) {
       room.jammed.left = true;
       room.lights.left = false;
     } else {
-      state.location = '1B'; // Retreat to Dining Area if blocked
+      state.location = getDoorRetreat(room, 'bonnie');
     }
     return;
   }
 
   // Chica at Right Door
   if (name === 'chica' && state.location === 'office_door_right') {
-    if (!room.doors.right) {
+    if (!room.doors.right && !hasCheat(room, 'superLucky')) {
       // Enter office & jam right buttons and turn off right light
       state.location = 'office';
       state.inOffice = true;
@@ -283,7 +359,7 @@ function attemptMove(room, name) {
       room.jammed.right = true;
       room.lights.right = false;
     } else {
-      state.location = '1B'; // Retreat to Dining Area if blocked
+      state.location = getDoorRetreat(room, 'chica');
     }
     return;
   }
@@ -291,9 +367,38 @@ function attemptMove(room, name) {
   // Graph traversal
   const paths = MOVEMENT_GRAPH[name];
   if (paths && paths[state.location]) {
-    const possibleMoves = paths[state.location];
-    state.location = possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
+    state.location = chooseMove(room, name, paths[state.location]);
   }
+}
+
+// Where a blocked door sends them back to. Insta Bonnie Chica (5) keeps them in
+// the halls instead of dropping them back to the Dining Area, which is also what
+// gives Super Lucky a loop to sit in when both cheats are on: 2B -> door -> 2A
+// -> 2B, with the door bounce below never letting them in.
+function getDoorRetreat(room, name) {
+  if (!hasCheat(room, 'instaBonnieChica')) return '1B';
+  return name === 'bonnie' ? '2A' : '4A';
+}
+
+// Random neighbour normally. Unlucky (6) takes the shortest way to the office;
+// Super Lucky (7) takes the longest, which keeps Bonnie and Chica circling.
+function chooseMove(room, name, moves) {
+  if (!moves.length) return undefined;
+  if (moves.length === 1) return moves[0];
+
+  const dist = OFFICE_DISTANCE[name];
+  if (dist) {
+    const at = key => (dist[key] === undefined ? 99 : dist[key]);
+    if (hasCheat(room, 'unlucky')) {
+      return moves.reduce((best, m) => (at(m) < at(best) ? m : best));
+    }
+    if (hasCheat(room, 'superLucky')) {
+      const away = key => (dist[key] === undefined ? -1 : dist[key]);
+      return moves.reduce((best, m) => (away(m) > away(best) ? m : best));
+    }
+  }
+
+  return moves[Math.floor(Math.random() * moves.length)];
 }
 
 // Any path that removes power has to run through here. Foxy's door knock used
@@ -301,6 +406,9 @@ function attemptMove(room, name) {
 // at 0% forever: the tick only checks for the outage inside `if (power > 0)`,
 // so `gameEnd/powerOut` was never emitted and the night simply froze.
 function drainPower(roomId, room, amount) {
+  // Unlimited Power (2) sits here rather than at the call sites so it also
+  // covers Foxy's knock, which routes through this same function.
+  if (hasCheat(room, 'unlimitedPower')) return;
   room.power = Math.max(0, room.power - amount);
   checkPowerOut(roomId, room);
 }
@@ -336,7 +444,10 @@ function getRoomStatePayload(room) {
     cameraUp: room.cameraUp,
     // Freddy's 4B stall keys off this rather than off `cameraUp`, so it has to be
     // visible client-side to be debuggable at all.
-    selectedCamera: room.selectedCamera
+    selectedCamera: room.selectedCamera,
+    // The run's frozen cheat list. The client reads this rather than its own
+    // localStorage mid-night, so editing the menu can't change a run in flight.
+    cheats: room.cheats ? [...room.cheats] : []
   };
 }
 
@@ -348,10 +459,11 @@ function gameTick(roomId) {
   const deltaMs = room.lastTickTime ? Math.min(1000, now - room.lastTickTime) : 100;
   room.lastTickTime = now;
 
-  // Hour tracking (60 seconds per hour)
+  // Hour tracking (60 seconds per hour, or 60 minutes under Real Time)
+  const hourLengthMs = 60000 * room.timeScale;
   room.hourTimerMs += deltaMs;
-  if (room.hourTimerMs >= 60000) {
-    room.hourTimerMs -= 60000;
+  if (room.hourTimerMs >= hourLengthMs) {
+    room.hourTimerMs -= hourLengthMs;
     room.hour++;
 
     if (room.hour >= TOTAL_HOURS) {
@@ -365,7 +477,8 @@ function gameTick(roomId) {
     for (const name of ['freddy', 'bonnie', 'chica', 'foxy']) {
       room.animatronics[name].ai = newAI[name];
     }
-    room.animatronics.goldenFreddy.ai = getGoldenFreddyAI(room.night, room.hour);
+    room.animatronics.goldenFreddy.ai =
+      getGoldenFreddyAI(room.night, room.hour, hasCheat(room, 'goldenFreddy'));
   }
 
   // Golden Freddy. Either he is sitting in the office counting down to the
@@ -391,15 +504,28 @@ function gameTick(roomId) {
   } else if (golden.cooldownMs <= 0 && golden.ai > 0 && room.power > 0 && !room.animatronics.freddy.inOffice) {
     // Freddy in the office makes any action fatal, and the appearance force-closes
     // the monitor — rolling here would kill the player under the wrong name.
+    const goldenCheat = hasCheat(room, 'goldenFreddy');
+    const rollIntervalMs =
+      (goldenCheat ? GOLDEN_CHEAT_ROLL_INTERVAL_MS : GOLDEN_ROLL_INTERVAL_MS) * room.clockMult;
+
     golden.rollTimerMs += deltaMs;
-    if (golden.rollTimerMs >= GOLDEN_ROLL_INTERVAL_MS) {
-      golden.rollTimerMs -= GOLDEN_ROLL_INTERVAL_MS;
-      const roll = Math.floor(Math.random() * GOLDEN_ROLL_DENOMINATOR) + 1;
-      if (roll <= golden.ai) {
+    if (golden.rollTimerMs >= rollIntervalMs) {
+      golden.rollTimerMs -= rollIntervalMs;
+
+      // He is exempt from Super Lucky's "AI 20 still moves" clause — the spec
+      // has him fail outright — and included in Unlucky's guaranteed move.
+      const denominator = goldenCheat ? GOLDEN_CHEAT_DENOMINATOR : GOLDEN_ROLL_DENOMINATOR;
+      let hit;
+      if (hasCheat(room, 'superLucky')) hit = false;
+      else if (hasCheat(room, 'unlucky')) hit = true;
+      else hit = (Math.floor(Math.random() * denominator) + 1) <= golden.ai;
+
+      if (hit) {
         golden.active = true;
         golden.activeMs = 0;
         golden.rollTimerMs = 0;
-        golden.cooldownMs = GOLDEN_RESPAWN_COOLDOWN_MS;
+        golden.cooldownMs =
+          (goldenCheat ? GOLDEN_CHEAT_COOLDOWN_MS : GOLDEN_RESPAWN_COOLDOWN_MS) * room.clockMult;
         room.cameraUp = false;
         io.to(roomId).emit('goldenFreddyAppear');
         io.to(roomId).emit('stateUpdate', getRoomStatePayload(room));
@@ -411,7 +537,7 @@ function gameTick(roomId) {
   const foxy = room.animatronics.foxy;
   if (room.cameraUp) {
     if (foxy.stallTimerMs <= 0) {
-      foxy.stallTimerMs = Math.floor((Math.random() * 14 + 3) * 1000); // 3-17s random stall
+      foxy.stallTimerMs = rollFoxyStallMs(room);
     }
   }
 
@@ -425,7 +551,7 @@ function gameTick(roomId) {
             io.to(roomId).emit('gameOver', { reason: 'foxy' });
           } else {
             foxy.knockCount++;
-            const knockDrain = getFoxyKnockDrain(foxy.knockCount);
+            const knockDrain = getFoxyKnockDrain(foxy.knockCount, room);
             drainPower(roomId, room, knockDrain);
             foxy.foxyStage = 0;
             foxy.sprinting = false;
@@ -447,7 +573,7 @@ function gameTick(roomId) {
           io.to(roomId).emit('gameOver', { reason: 'foxy' });
         } else {
           foxy.knockCount++;
-          const knockDrain = getFoxyKnockDrain(foxy.knockCount);
+          const knockDrain = getFoxyKnockDrain(foxy.knockCount, room);
           drainPower(roomId, room, knockDrain);
           foxy.foxyStage = 0;
           foxy.sprinting = false;
@@ -472,9 +598,10 @@ function gameTick(roomId) {
       continue;
     }
 
+    const intervalMs = config.intervalMs * room.clockMult;
     anim.movementTimerMs += deltaMs;
-    if (anim.movementTimerMs >= config.intervalMs) {
-      anim.movementTimerMs -= config.intervalMs;
+    if (anim.movementTimerMs >= intervalMs) {
+      anim.movementTimerMs -= intervalMs;
       attemptMove(room, name);
     }
   }
@@ -488,7 +615,9 @@ function gameTick(roomId) {
   room.usage = usage;
 
   if (room.power > 0) {
-    drainPower(roomId, room, POWER_DRAIN_BASE * (deltaMs / 1000) * usage);
+    // Divided by timeScale, not clockMult: a 6-hour night has to burn the meter
+    // over the same share of the shift, and Speed must not touch power at all.
+    drainPower(roomId, room, POWER_DRAIN_BASE * (deltaMs / 1000) * usage / room.timeScale);
   }
 
   room.broadcastTimerMs += deltaMs;
@@ -516,11 +645,11 @@ function stopRoomLoop(roomId) {
 
 io.on('connection', (socket) => {
   socket.on('joinGame', (data) => {
-    const { roomId, night = 1, customAI = null } = data;
+    const { roomId, night = 1, customAI = null, cheats = [] } = data;
     let room = rooms.get(roomId);
 
     if (!room || room.state === 'gameover' || room.state === 'won') {
-      room = createRoom(roomId, night, customAI);
+      room = createRoom(roomId, night, customAI, cheats);
       rooms.set(roomId, room);
     }
 
@@ -544,7 +673,7 @@ io.on('connection', (socket) => {
     const foxy = room.animatronics.foxy;
     if (foxy && foxy.foxyStage === 3 && !foxy.sprinting && room.cameraUp && room.selectedCamera === '2A') {
       foxy.sprinting = true;
-      foxy.sprintWindowMs = 4000; // 1s sprint + 3s door close window
+      foxy.sprintWindowMs = FOXY_SPRINT_WINDOW_MS;
       io.to(room.id).emit('foxySprint');
     }
   }
@@ -618,7 +747,7 @@ io.on('connection', (socket) => {
 
       room.cameraUp = newCameraUp;
       if (room.cameraUp && room.animatronics.foxy.stallTimerMs <= 0) {
-        room.animatronics.foxy.stallTimerMs = Math.floor((Math.random() * 14 + 3) * 1000);
+        room.animatronics.foxy.stallTimerMs = rollFoxyStallMs(room);
       }
       checkFoxySprintTrigger(room);
     }
