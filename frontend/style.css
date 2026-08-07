@@ -314,6 +314,21 @@ body {
     z-index: 55;
 }
 
+/* Parked just clear of the red dot's right edge (4.5cqh + 4.5cqh = 9cqh) and
+   centred on it vertically. 4.3cqh is the plate's native height, 31/720. */
+#muteCall {
+    position: absolute;
+    top: 5.1cqh;
+    left: 10cqh;
+    height: 4.3cqh;
+    width: auto;
+    object-fit: contain;
+    image-rendering: pixelated;
+    cursor: pointer;
+    /* Over the camera (50) but under the menu (500) and every death/win screen. */
+    z-index: 400;
+}
+
 #camBorder {
     position: absolute;
     inset: 0;

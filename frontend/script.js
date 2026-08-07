@@ -290,7 +290,12 @@ const audioSources = {
     oven1: 'audio/OVEN-DRAWE_GEN-HDF18122.wav',
     oven2: 'audio/OVEN-DRA_1_GEN-HDF18119.wav',
     oven3: 'audio/OVEN-DRA_2_GEN-HDF18120.wav',
-    oven4: 'audio/OVEN-DRA_7_GEN-HDF18121.wav'
+    oven4: 'audio/OVEN-DRA_7_GEN-HDF18121.wav',
+    voiceover1: 'audio/voiceover1c.wav',
+    voiceover2: 'audio/voiceover2a.wav',
+    voiceover3: 'audio/voiceover3.wav',
+    voiceover4: 'audio/voiceover4.wav',
+    voiceover5: 'audio/voiceover5.wav'
 };
 
 const audio = {};
@@ -358,6 +363,104 @@ function playSound(name) {
 
 window.addEventListener('pointerdown', unlockAudio, { once: true });
 window.addEventListener('keydown', unlockAudio, { once: true });
+
+/* ------------------------------- Phone call ------------------------------- */
+/* The night's message comes in a few seconds after the shift starts. A mute
+   button sits beside the camera's red dot for the first stretch of the call;
+   after that the message is committed and plays out in full. */
+
+// Nights 6 and 7 have no recording, so they are absent from the map on purpose.
+const NIGHT_VOICEOVERS = {
+    1: 'voiceover1',
+    2: 'voiceover2',
+    3: 'voiceover3',
+    4: 'voiceover4',
+    5: 'voiceover5'
+};
+
+const CALL_START_DELAY_MS = 5000;
+const CALL_MUTE_WINDOW_MS = 25000;
+
+const muteCallButton = document.getElementById('muteCall');
+
+let activeCallName = null;
+let callStartTimeout = null;
+let callMuteTimeout = null;
+let callEndedHandler = null;
+
+function setMuteCallVisible(visible) {
+    if (muteCallButton) muteCallButton.style.display = visible ? 'block' : 'none';
+}
+
+function clearCallTimers() {
+    if (callStartTimeout) {
+        clearTimeout(callStartTimeout);
+        callStartTimeout = null;
+    }
+    if (callMuteTimeout) {
+        clearTimeout(callMuteTimeout);
+        callMuteTimeout = null;
+    }
+}
+
+function detachCallEndedHandler() {
+    if (activeCallName && callEndedHandler) {
+        const clip = audio[activeCallName];
+        if (clip) clip.removeEventListener('ended', callEndedHandler);
+    }
+    callEndedHandler = null;
+}
+
+// Called on every night boundary as well as on death and on the win, so a call
+// left running can never bleed into the next run.
+function stopNightCall() {
+    clearCallTimers();
+    detachCallEndedHandler();
+    if (activeCallName) {
+        stopSound(activeCallName);
+        activeCallName = null;
+    }
+    setMuteCallVisible(false);
+}
+
+function startNightCall(night) {
+    stopNightCall();
+
+    const name = NIGHT_VOICEOVERS[night];
+    if (!name) return;
+
+    callStartTimeout = setTimeout(() => {
+        callStartTimeout = null;
+
+        const clip = ensureAudio(name);
+        if (!clip) return;
+
+        activeCallName = name;
+        playSound(name);
+        setMuteCallVisible(true);
+
+        // Also drop the button if the message runs shorter than the mute window.
+        callEndedHandler = () => {
+            setMuteCallVisible(false);
+            detachCallEndedHandler();
+            activeCallName = null;
+        };
+        clip.addEventListener('ended', callEndedHandler);
+
+        callMuteTimeout = setTimeout(() => {
+            callMuteTimeout = null;
+            setMuteCallVisible(false);
+        }, CALL_MUTE_WINDOW_MS);
+    }, CALL_START_DELAY_MS);
+}
+
+if (muteCallButton) {
+    muteCallButton.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        stopNightCall();
+    });
+}
 
 // Measure against the letterboxed game frame, not the viewport: on any window
 // that isn't exactly 16:9 there are black bars, and dividing by innerWidth put
@@ -817,6 +920,7 @@ function triggerJumpscare(reason) {
     stopKitchenOvenSound();
     stopKitchenMusic();
     stopPirateSongRolls();
+    stopNightCall();
 
     playSound('jumpscare');
     if (jumpscare) {
@@ -975,6 +1079,7 @@ function triggerWinSequence(callback) {
     stopKitchenOvenSound();
     stopKitchenMusic();
     stopPirateSongRolls();
+    stopNightCall();
     if (typeof stopPowerOutageSequence === 'function') {
         stopPowerOutageSequence();
     }
@@ -2217,6 +2322,7 @@ function showMainMenu() {
     stopKitchenOvenSound();
     stopKitchenMusic();
     stopPirateSongRolls();
+    stopNightCall();
     startMenuMusic();
     startMenuTwitch();
 }
@@ -2299,6 +2405,7 @@ function showNightIntro(night, callback) {
 
 function startGame(night, customAI = null) {
     stopPowerOutageSequence();
+    stopNightCall();
     canToggleCamera = true;
     currentNight = night;
     currentRoomId = 'room_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
@@ -2324,6 +2431,8 @@ function startGame(night, customAI = null) {
     showNightIntro(night, () => {
         joinGame(currentRoomId, night, customAI);
         startPirateSongRolls();
+        // Counted from the moment the shift actually starts, not from the card.
+        startNightCall(night);
     });
 }
 

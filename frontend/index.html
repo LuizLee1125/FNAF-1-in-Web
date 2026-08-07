@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Five Nights at Freddy's</title>
-    <link rel="stylesheet" href="style.css?v=2">
+    <link rel="stylesheet" href="style.css?v=3">
 </head>
 
 <body>
@@ -79,6 +79,10 @@
                 </div>
             </div>
         </div>
+
+        <!-- Sits in the frame rather than in #office or #cameraOverlay, so it holds
+             the same spot beside the red dot whichever of the two is on screen. -->
+        <img id="muteCall" src="textures/office/misc/mute call.png" alt="Mute call" style="display:none;">
 
         <div id="newStartScreen" style="display:none;">
             <img id="newStartImg" src="textures/main menu/new start.png" alt="Help Wanted - New Start">
@@ -220,7 +224,7 @@
 
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script src="client.js?v=2"></script>
-    <script src="script.js?v=2"></script>
+    <script src="script.js?v=3"></script>
 </body>
 
 </html>
