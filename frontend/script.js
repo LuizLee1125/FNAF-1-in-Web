@@ -265,6 +265,8 @@ const audioSources = {
     windowscare: 'audio/windowscare.wav',
     powerdown: 'audio/powerdown.wav',
     jumpscare: 'audio/XSCREAM.wav',
+    jumpscare2: 'audio/XSCREAM2.wav', // Golden Freddy's scream, his alone
+    goldenLaugh: 'audio/Laugh_Giggle_Girl_1.wav',
     doorClick: 'audio/SFXBible_12478.wav',
     lightClick: 'audio/lights on.mp3',
     cam_open: 'audio/cam open.mp3',
@@ -802,6 +804,12 @@ const jumpscareFrames = {
     ]
 };
 
+/* Golden Freddy is the odd one out: a single held frame rather than a sheet, so
+   he is kept out of jumpscareFrames and driven by his own path below. */
+const GOLDEN_FREDDY_JUMPSCARE = 'textures/jumpscares/golden freddy/548.png';
+const GOLDEN_FREDDY_SPRITE = 'textures/office/misc/golden freddy sprite.png';
+const GOLDEN_FREDDY_JUMPSCARE_MS = 2000;
+
 function preloadJumpscareImages() {
     for (const frames of Object.values(jumpscareFrames)) {
         frames.forEach(src => {
@@ -809,6 +817,10 @@ function preloadJumpscareImages() {
             img.src = src;
         });
     }
+    [GOLDEN_FREDDY_JUMPSCARE, GOLDEN_FREDDY_SPRITE].forEach(src => {
+        const img = new Image();
+        img.src = src;
+    });
 }
 preloadJumpscareImages();
 
@@ -977,6 +989,94 @@ function triggerJumpscare(reason) {
             showGameOverScreen();
         }, 3000);
     }, totalDurationMs);
+}
+
+/* ----------------------------- Golden Freddy ------------------------------ */
+/* The server owns his timer; this side just shows the sprite, yanks the monitor
+   down, and — if the 4 seconds run out — plays a scare that skips the whole
+   static / Game Over tail every other animatronic gets. */
+
+let goldenJumpscareTimeout = null;
+
+function getGoldenFreddyEl() {
+    return document.getElementById('goldenFreddy');
+}
+
+function showGoldenFreddy() {
+    // The laugh goes first and lands on the same frame he does. It is warmed at
+    // startup (see the ensureAudio list at the end of this file) — created cold
+    // here, the element would spend its first play fetching and the giggle would
+    // trail the sprite by a beat.
+    playSound('goldenLaugh');
+
+    const el = getGoldenFreddyEl();
+    if (el) el.style.display = 'block';
+
+    // He appears *because* the player was on the cameras, so the monitor has to
+    // come down before he is visible at all.
+    if (isCameraUp || cameraAnimating) {
+        forceCloseCamera();
+    }
+}
+
+function hideGoldenFreddy() {
+    const el = getGoldenFreddyEl();
+    if (el) el.style.display = 'none';
+    stopSound('goldenLaugh');
+}
+
+function triggerGoldenFreddyJumpscare() {
+    const jumpscare = document.getElementById('jumpscare');
+    const deathStaticScreen = document.getElementById('deathStaticScreen');
+    const gameOverScreen = document.getElementById('gameOverScreen');
+
+    if (jumpscareAnimInterval) {
+        clearInterval(jumpscareAnimInterval);
+        jumpscareAnimInterval = null;
+    }
+    if (jumpscareSequenceTimeout) clearTimeout(jumpscareSequenceTimeout);
+    if (deathStaticTimeout) clearTimeout(deathStaticTimeout);
+    if (goldenJumpscareTimeout) clearTimeout(goldenJumpscareTimeout);
+    clearWinTimers();
+
+    if (deathStaticScreen) deathStaticScreen.style.display = 'none';
+    if (gameOverScreen) gameOverScreen.style.display = 'none';
+
+    if (typeof endRun === 'function') endRun();
+
+    hideGoldenFreddy();
+    stopSound('ambience');
+    stopSound('on_cam');
+    stopSound('musicBox');
+    stopKitchenOvenSound();
+    stopKitchenMusic();
+    stopPirateSongRolls();
+    stopNightCall();
+    stopPowerOutageSequence();
+
+    playSound('jumpscare2');
+    if (jumpscare) {
+        jumpscare.src = GOLDEN_FREDDY_JUMPSCARE;
+        jumpscare.style.display = 'block';
+        jumpscare.style.zIndex = '1000';
+    }
+
+    // One frame held for two seconds, then straight back to the menu — no death
+    // static, no Game Over screen.
+    goldenJumpscareTimeout = setTimeout(() => {
+        goldenJumpscareTimeout = null;
+        if (jumpscare) jumpscare.style.display = 'none';
+        stopSound('jumpscare2');
+        returnToMainMenu();
+    }, GOLDEN_FREDDY_JUMPSCARE_MS);
+}
+
+function resetGoldenFreddy() {
+    if (goldenJumpscareTimeout) {
+        clearTimeout(goldenJumpscareTimeout);
+        goldenJumpscareTimeout = null;
+    }
+    hideGoldenFreddy();
 }
 
 let winSequenceTimeouts = [];
@@ -1790,6 +1890,10 @@ function onServerState(state) {
         document.getElementById('aiB').textContent = state.animatronics.bonnie.ai;
         document.getElementById('aiC').textContent = state.animatronics.chica.ai;
         document.getElementById('aiFx').textContent = state.animatronics.foxy.ai;
+        const aiG = document.getElementById('aiG');
+        if (aiG && state.animatronics.goldenFreddy) {
+            aiG.textContent = state.animatronics.goldenFreddy.ai;
+        }
     }
 
     drawPixelText(timeDisplay, (state.hour === 0 ? 12 : state.hour) + ' AM');
@@ -2248,8 +2352,27 @@ document.getElementById('chicaPlus')?.addEventListener('click', () => adjustCust
 document.getElementById('foxyMinus')?.addEventListener('click', () => adjustCustomAI('foxy', -1));
 document.getElementById('foxyPlus')?.addEventListener('click', () => adjustCustomAI('foxy', 1));
 
+/* 1/9/8/7 on the four sliders spells the year on the posters. Setting it and
+   hitting READY doesn't start a shift — Golden Freddy answers instead. */
+const GOLDEN_FREDDY_CODE = { freddy: 1, bonnie: 9, chica: 8, foxy: 7 };
+
+function isGoldenFreddyCode(levels) {
+    return Object.keys(GOLDEN_FREDDY_CODE)
+        .every(name => levels[name] === GOLDEN_FREDDY_CODE[name]);
+}
+
 document.getElementById('btnStartCustom')?.addEventListener('click', () => {
     document.getElementById('customNightScreen').style.display = 'none';
+
+    if (isGoldenFreddyCode(customAiLevels)) {
+        // Skip the night card entirely — the scare is the whole response.
+        stopSound('menuAmbience');
+        stopSound('mainMenu2');
+        stopMenuEffects();
+        triggerGoldenFreddyJumpscare();
+        return;
+    }
+
     // The third star is earned by surviving to 6 AM here, not by setting 20/20/20/20.
     startGame(7, customAiLevels);
 });
@@ -2301,6 +2424,7 @@ function startMenuMusic() {
 
 function showMainMenu() {
     stopPowerOutageSequence();
+    resetGoldenFreddy();
     renderMainMenu();
     mainMenu.style.display = 'flex';
     document.getElementById('customNightScreen').style.display = 'none';
@@ -2406,6 +2530,7 @@ function showNightIntro(night, callback) {
 function startGame(night, customAI = null) {
     stopPowerOutageSequence();
     stopNightCall();
+    resetGoldenFreddy();
     canToggleCamera = true;
     currentNight = night;
     currentRoomId = 'room_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
@@ -2502,6 +2627,10 @@ initTextPlates();
 // Warm the clips whose *duration* drives timing, so it is known by the time a
 // night is actually cleared rather than NaN on first use.
 ['win', 'musicBox', 'kitchenMusicBox', 'pirateSong'].forEach(ensureAudio);
+
+// Golden Freddy's two cues are warmed for latency, not duration: both have to be
+// audible on the exact frame they are asked for, with no fetch in between.
+['goldenLaugh', 'jumpscare2'].forEach(ensureAudio);
 
 // Seed the HUD so it is drawn before the first server state arrives.
 drawPixelText(document.getElementById('usageLabel'), 'Usage:');

@@ -26,6 +26,30 @@ const MOVEMENT_CONFIG = {
   foxy: { intervalMs: 5010, cameraStall: true }
 };
 
+// Golden Freddy doesn't walk the room graph at all. He rolls only while the
+// monitor is up, and a hit drops him straight into the office.
+const GOLDEN_ROLL_INTERVAL_MS = 2000;
+const GOLDEN_ROLL_DENOMINATOR = 200;
+const GOLDEN_OFFICE_DURATION_MS = 4000;
+// Counted from the moment he enters, so it covers his 4s in the office and keeps
+// running after he's waved off. Without it "flip up, he leaves, flip up again"
+// can land a second appearance immediately.
+const GOLDEN_RESPAWN_COOLDOWN_MS = 30000;
+
+// A flat value per hour rather than the sparse `{hour, ...}` shape AI_SCHEDULES
+// uses — nights 3 and 4 change every single hour, so the sparse form would just
+// be six entries anyway. Index 0 is 12 AM.
+const GOLDEN_FREDDY_AI = {
+  1: [0, 0, 0, 0, 0, 1],
+  2: [0, 0, 0, 0, 1, 1],
+  3: [10, 5, 4, 3, 2, 1],
+  4: [20, 15, 10, 5, 1, 1],
+  5: [10, 10, 10, 10, 10, 10],
+  6: [15, 15, 15, 15, 15, 15],
+  // Custom night: fixed at 20 whatever the sliders say — he isn't one of them.
+  7: [20, 20, 20, 20, 20, 20]
+};
+
 // FNAF 1 Accurate Room Graph
 const MOVEMENT_GRAPH = {
   freddy: {
@@ -129,9 +153,23 @@ function createRoom(roomId, night, customAI) {
       freddy: { location: '1A', ai: initialAI.freddy, movementTimerMs: 0, inOffice: false },
       bonnie: { location: '1A', ai: initialAI.bonnie, movementTimerMs: 0, inOffice: false, readyToJumpscare: false },
       chica: { location: '1A', ai: initialAI.chica, movementTimerMs: 0, inOffice: false, readyToJumpscare: false },
-      foxy: { location: '1C', ai: initialAI.foxy, movementTimerMs: 0, foxyStage: 0, stallTimerMs: 0, sprintTimerMs: 0, sprinting: false, sprintWindowMs: 0, knockCount: 0 }
+      foxy: { location: '1C', ai: initialAI.foxy, movementTimerMs: 0, foxyStage: 0, stallTimerMs: 0, sprintTimerMs: 0, sprinting: false, sprintWindowMs: 0, knockCount: 0 },
+      goldenFreddy: { ai: getGoldenFreddyAI(night || 1, 0), rollTimerMs: 0, active: false, activeMs: 0, cooldownMs: 0 }
     }
   };
+}
+
+function getGoldenFreddyAI(night, hour) {
+  const table = GOLDEN_FREDDY_AI[night] || GOLDEN_FREDDY_AI[1];
+  return table[Math.min(hour, table.length - 1)];
+}
+
+function clearGoldenFreddy(room) {
+  const golden = room.animatronics.goldenFreddy;
+  if (!golden) return;
+  golden.active = false;
+  golden.activeMs = 0;
+  golden.rollTimerMs = 0;
 }
 
 function getAIForHour(room, hour) {
@@ -265,6 +303,9 @@ function checkPowerOut(roomId, room) {
   room.cameraUp = false;
   room.usage = 1;
   room.powerOutTriggered = true;
+  // A blackout retires him — otherwise his countdown keeps running underneath
+  // the outage sequence and lands a scare the player can no longer answer.
+  clearGoldenFreddy(room);
 
   io.to(roomId).emit('stateUpdate', getRoomStatePayload(room));
   io.to(roomId).emit('gameEnd', { result: 'powerOut' });
@@ -307,6 +348,46 @@ function gameTick(roomId) {
     const newAI = getAIForHour(room, room.hour);
     for (const name of ['freddy', 'bonnie', 'chica', 'foxy']) {
       room.animatronics[name].ai = newAI[name];
+    }
+    room.animatronics.goldenFreddy.ai = getGoldenFreddyAI(room.night, room.hour);
+  }
+
+  // Golden Freddy. Either he is sitting in the office counting down to the
+  // scare, or he is rolling to show up — never both.
+  const golden = room.animatronics.goldenFreddy;
+  if (golden.cooldownMs > 0) {
+    golden.cooldownMs = Math.max(0, golden.cooldownMs - deltaMs);
+  }
+
+  if (golden.active) {
+    golden.activeMs += deltaMs;
+    if (golden.activeMs >= GOLDEN_OFFICE_DURATION_MS) {
+      clearGoldenFreddy(room);
+      room.state = 'gameover';
+      io.to(roomId).emit('gameOver', { reason: 'goldenFreddy' });
+      stopRoomLoop(roomId);
+      return;
+    }
+  } else if (!room.cameraUp) {
+    // Only camera-up time counts, so every fresh flip-up gets a clean 2s before
+    // its first roll rather than inheriting a nearly-full timer.
+    golden.rollTimerMs = 0;
+  } else if (golden.cooldownMs <= 0 && golden.ai > 0 && room.power > 0 && !room.animatronics.freddy.inOffice) {
+    // Freddy in the office makes any action fatal, and the appearance force-closes
+    // the monitor — rolling here would kill the player under the wrong name.
+    golden.rollTimerMs += deltaMs;
+    if (golden.rollTimerMs >= GOLDEN_ROLL_INTERVAL_MS) {
+      golden.rollTimerMs -= GOLDEN_ROLL_INTERVAL_MS;
+      const roll = Math.floor(Math.random() * GOLDEN_ROLL_DENOMINATOR) + 1;
+      if (roll <= golden.ai) {
+        golden.active = true;
+        golden.activeMs = 0;
+        golden.rollTimerMs = 0;
+        golden.cooldownMs = GOLDEN_RESPAWN_COOLDOWN_MS;
+        room.cameraUp = false;
+        io.to(roomId).emit('goldenFreddyAppear');
+        io.to(roomId).emit('stateUpdate', getRoomStatePayload(room));
+      }
     }
   }
 
@@ -511,6 +592,12 @@ io.on('connection', (socket) => {
             return;
           }
         }
+      }
+
+      // Pulling the monitor back up is what sends Golden Freddy away.
+      if (newCameraUp && room.animatronics.goldenFreddy.active) {
+        clearGoldenFreddy(room);
+        io.to(socket.roomId).emit('goldenFreddyVanish');
       }
 
       room.cameraUp = newCameraUp;

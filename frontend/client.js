@@ -81,9 +81,22 @@ socket.on('gameEnd', (data) => {
 socket.on('gameOver', (data) => {
   if (runEnded) return;
   endRun();
-  if (typeof triggerJumpscare === 'function') {
+  // Golden Freddy has his own scare: one frame, XSCREAM2, then the menu — none
+  // of the static / Game Over tail the others run through.
+  if (data.reason === 'goldenFreddy' && typeof triggerGoldenFreddyJumpscare === 'function') {
+    triggerGoldenFreddyJumpscare();
+  } else if (typeof triggerJumpscare === 'function') {
     triggerJumpscare(data.reason);
   }
+});
+
+socket.on('goldenFreddyAppear', () => {
+  if (runEnded) return;
+  if (typeof showGoldenFreddy === 'function') showGoldenFreddy();
+});
+
+socket.on('goldenFreddyVanish', () => {
+  if (typeof hideGoldenFreddy === 'function') hideGoldenFreddy();
 });
 
 socket.on('foxySprint', () => {

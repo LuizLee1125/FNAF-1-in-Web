@@ -11,7 +11,7 @@
 <body>
     <div id="gameWindow">
         <div id="aiDisplay" style="position: absolute; top: 15px; left: 15px; color: #fff; font-size: 16px; z-index: 100; pointer-events: none; display: none;">
-            AI - F:<span id="aiF">0</span> B:<span id="aiB">0</span> C:<span id="aiC">0</span> Fx:<span id="aiFx">0</span>
+            AI - F:<span id="aiF">0</span> B:<span id="aiB">0</span> C:<span id="aiC">0</span> Fx:<span id="aiFx">0</span> G:<span id="aiG">0</span>
         </div>
 
         <div id="office">
@@ -24,6 +24,11 @@
             <div id="rightButtons" class="button-panel">
                 <button id="toggleRight" type="button" class="panel-button"></button>
             </div>
+
+            <!-- Lives inside #office so it pans with the room and disappears with
+                 it on the menu. #cameraOverlay sits outside at z-index 50, so
+                 raising the monitor still covers him. -->
+            <img id="goldenFreddy" src="textures/office/misc/golden freddy sprite.png" alt="" style="display:none;">
         </div>
 
         <div id="cameraContainer">

@@ -81,6 +81,23 @@ body {
     width: 15.5%;
 }
 
+/* Golden Freddy sits on the floor dead-centre in the room. The sprite is 541x521
+   against the same 1600x720 office plate the doors are authored to, so it is
+   placed at native scale and centred horizontally. It is then pushed 12% of the
+   frame past the bottom edge so his feet are cut off rather than shown —
+   #gameWindow's overflow:hidden does the clipping. */
+#goldenFreddy {
+    position: absolute;
+    left: 33.09%;
+    top: 39.64%;
+    width: 33.8125%;
+    height: 72.3611%;
+    object-fit: fill;
+    pointer-events: none;
+    z-index: 120;
+    display: none;
+}
+
 .button-panel {
     position: absolute;
     top: 45%;
