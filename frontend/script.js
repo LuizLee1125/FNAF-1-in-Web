@@ -289,10 +289,8 @@ const audioSources = {
     freddyLaugh2: 'audio/Laugh_Giggle_Girl_2d.wav',
     freddyLaugh3: 'audio/Laugh_Giggle_Girl_8d.wav',
     mainMenu2: 'audio/main_menu1.wav',
-    oven1: 'audio/OVEN-DRAWE_GEN-HDF18122.wav',
-    oven2: 'audio/OVEN-DRA_1_GEN-HDF18119.wav',
-    oven3: 'audio/OVEN-DRA_2_GEN-HDF18120.wav',
-    oven4: 'audio/OVEN-DRA_7_GEN-HDF18121.wav',
+    // The four oven clips are not listed here: they share one element so the
+    // Web Audio routing survives swapping between them. See OVEN_CLIPS.
     voiceover1: 'audio/voiceover1c.wav',
     voiceover2: 'audio/voiceover2a.wav',
     voiceover3: 'audio/voiceover3.wav',
@@ -929,7 +927,7 @@ function triggerJumpscare(reason) {
     stopSound('ambience');
     stopSound('on_cam');
     stopSound('musicBox');
-    stopKitchenOvenSound();
+    stopChicaKitchenSound();
     stopKitchenMusic();
     stopPirateSongRolls();
     stopNightCall();
@@ -1048,7 +1046,7 @@ function triggerGoldenFreddyJumpscare() {
     stopSound('ambience');
     stopSound('on_cam');
     stopSound('musicBox');
-    stopKitchenOvenSound();
+    stopChicaKitchenSound();
     stopKitchenMusic();
     stopPirateSongRolls();
     stopNightCall();
@@ -1176,7 +1174,7 @@ function triggerWinSequence(callback) {
 
     stopSound('ambience');
     stopSound('on_cam');
-    stopKitchenOvenSound();
+    stopChicaKitchenSound();
     stopKitchenMusic();
     stopPirateSongRolls();
     stopNightCall();
@@ -1397,6 +1395,48 @@ function playCamGlitch() {
 const KITCHEN_MUSIC_ON_CAM = { gain: 0.55, cutoffHz: 18000 };
 const KITCHEN_MUSIC_MUFFLED = { gain: 0.09, cutoffHz: 380 };
 
+/* One context for the page. Browsers cap how many a document may open, and both
+   kitchen sources want the same one. `false` means Web Audio isn't available at
+   all, which every caller reads as "fall back to plain volume". */
+let sharedAudioCtx = null;
+
+function getAudioContext() {
+    if (sharedAudioCtx !== null) return sharedAudioCtx;
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) { sharedAudioCtx = false; return false; }
+    try {
+        sharedAudioCtx = new Ctx();
+    } catch (err) {
+        sharedAudioCtx = false;
+    }
+    return sharedAudioCtx;
+}
+
+// element -> lowpass -> gain -> speakers. Returns false if the routing can't be
+// built, in which case the caller drives `el.volume` directly instead.
+function buildFilteredChain(el) {
+    const ctx = getAudioContext();
+    if (!ctx) return false;
+    try {
+        const source = ctx.createMediaElementSource(el);
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        const gain = ctx.createGain();
+        source.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+        return { ctx, filter, gain };
+    } catch (err) {
+        return false;
+    }
+}
+
+function resumeAudioContext(chain) {
+    if (chain && chain.ctx.state === 'suspended') {
+        chain.ctx.resume().catch(() => { });
+    }
+}
+
 let kitchenChain = null;
 let kitchenMusicPlaying = false;
 
@@ -1405,23 +1445,8 @@ function ensureKitchenChain() {
     if (!el) return null;
     el.loop = true;
 
-    if (kitchenChain !== null) return el;
-
-    const Ctx = window.AudioContext || window.webkitAudioContext;
-    if (!Ctx) { kitchenChain = false; return el; }
-
-    try {
-        const ctx = new Ctx();
-        const source = ctx.createMediaElementSource(el);
-        const filter = ctx.createBiquadFilter();
-        filter.type = 'lowpass';
-        const gain = ctx.createGain();
-        source.connect(filter);
-        filter.connect(gain);
-        gain.connect(ctx.destination);
-        kitchenChain = { ctx, filter, gain };
-    } catch (err) {
-        kitchenChain = false; // routing failed — plain volume it is
+    if (kitchenChain === null) {
+        kitchenChain = buildFilteredChain(el);
     }
     return el;
 }
@@ -1447,9 +1472,7 @@ function startKitchenMusic(onCam) {
     setKitchenMusicMix(onCam);
     if (kitchenMusicPlaying) return;
     kitchenMusicPlaying = true;
-    if (kitchenChain && kitchenChain.ctx.state === 'suspended') {
-        kitchenChain.ctx.resume().catch(() => { });
-    }
+    resumeAudioContext(kitchenChain);
     el.play().catch(() => { });
 }
 
@@ -1502,26 +1525,100 @@ function stopPirateSongRolls() {
     stopSound('pirateSong');
 }
 
-const ovenSounds = ['oven1', 'oven2', 'oven3', 'oven4'];
-let currentOvenSound = null;
+/* ------------------- Chica in the Kitchen (CAM 06) -------------------------
+   The same rule as Freddy's music box: clear while you're watching CAM 06, and
+   quiet and muffled through the office wall otherwise. Where Freddy loops one
+   clip, Chica's kitchen is four oven clips picked at random with a short pause
+   between them, so it reads as someone banging around in there rather than a
+   single clang. They share one element so the Web Audio routing survives the
+   src swap — a MediaElementSource binds to the element, not to the file. */
+const CHICA_KITCHEN_ON_CAM = { gain: 0.55, cutoffHz: 18000 };
+const CHICA_KITCHEN_MUFFLED = { gain: 0.09, cutoffHz: 380 };
 
-function updateKitchenOvenSound(cam) {
-    if (cam === '6' && currentState && currentState.animatronics.chica.location === '6') {
-        // Pick a random oven sound and play it
-        stopKitchenOvenSound();
-        const rand = ovenSounds[Math.floor(Math.random() * ovenSounds.length)];
-        currentOvenSound = rand;
-        playSound(rand);
+const OVEN_CLIPS = [
+    'audio/OVEN-DRAWE_GEN-HDF18122.wav',
+    'audio/OVEN-DRA_1_GEN-HDF18119.wav',
+    'audio/OVEN-DRA_2_GEN-HDF18120.wav',
+    'audio/OVEN-DRA_7_GEN-HDF18121.wav'
+];
+const OVEN_GAP_MIN_MS = 700;
+const OVEN_GAP_MAX_MS = 2600;
+
+let chicaKitchenChain = null;
+let chicaKitchenPlaying = false;
+let chicaOvenEl = null;
+let chicaOvenGapTimer = null;
+
+function ensureChicaOvenElement() {
+    if (chicaOvenEl) return chicaOvenEl;
+
+    chicaOvenEl = new Audio(OVEN_CLIPS[0]);
+    chicaOvenEl.preload = 'auto';
+    chicaOvenEl.volume = 1;
+    chicaOvenEl.addEventListener('ended', () => {
+        if (!chicaKitchenPlaying) return;
+        const gap = OVEN_GAP_MIN_MS + Math.random() * (OVEN_GAP_MAX_MS - OVEN_GAP_MIN_MS);
+        chicaOvenGapTimer = setTimeout(playNextOvenClip, gap);
+    });
+
+    chicaKitchenChain = buildFilteredChain(chicaOvenEl);
+    return chicaOvenEl;
+}
+
+function playNextOvenClip() {
+    chicaOvenGapTimer = null;
+    if (!chicaKitchenPlaying) return;
+    const el = ensureChicaOvenElement();
+    el.src = OVEN_CLIPS[Math.floor(Math.random() * OVEN_CLIPS.length)];
+    el.currentTime = 0;
+    el.play().catch(() => { });
+}
+
+function setChicaKitchenMix(onCam) {
+    const el = ensureChicaOvenElement();
+    if (!el) return;
+    const mix = onCam ? CHICA_KITCHEN_ON_CAM : CHICA_KITCHEN_MUFFLED;
+
+    if (chicaKitchenChain) {
+        const now = chicaKitchenChain.ctx.currentTime;
+        chicaKitchenChain.gain.gain.setTargetAtTime(mix.gain, now, 0.15);
+        chicaKitchenChain.filter.frequency.setTargetAtTime(mix.cutoffHz, now, 0.15);
+        el.volume = 1;
     } else {
-        stopKitchenOvenSound();
+        el.volume = mix.gain;
     }
 }
 
-function stopKitchenOvenSound() {
-    if (currentOvenSound) {
-        stopSound(currentOvenSound);
-        currentOvenSound = null;
+function startChicaKitchenSound(onCam) {
+    const el = ensureChicaOvenElement();
+    if (!el) return;
+    setChicaKitchenMix(onCam);
+    if (chicaKitchenPlaying) return;
+    chicaKitchenPlaying = true;
+    resumeAudioContext(chicaKitchenChain);
+    playNextOvenClip();
+}
+
+function stopChicaKitchenSound() {
+    chicaKitchenPlaying = false;
+    if (chicaOvenGapTimer) {
+        clearTimeout(chicaOvenGapTimer);
+        chicaOvenGapTimer = null;
     }
+    if (chicaOvenEl) {
+        chicaOvenEl.pause();
+        chicaOvenEl.currentTime = 0;
+    }
+}
+
+// Chica is in the kitchen for as long as her location is CAM 06.
+function updateChicaKitchenSound(state) {
+    const inKitchen = !!(state && state.animatronics && state.animatronics.chica.location === '6');
+    if (!inKitchen || state.power <= 0 || isPowerOutage) {
+        stopChicaKitchenSound();
+        return;
+    }
+    startChicaKitchenSound(isCameraUp && selectedCamera === '6');
 }
 
 function selectCamera(cam) {
@@ -1552,12 +1649,12 @@ function selectCamera(cam) {
         updateCameraTexture(currentState);
     }
 
-    // Kitchen oven sounds: play random oven sound when switching to cam 6 while Chica is in kitchen
-    updateKitchenOvenSound(cam);
-
-    // Freddy's music box opens up when you land on the kitchen and muffles again
-    // when you leave it.
-    if (currentState) updateFreddyMusicBox(currentState);
+    // Both kitchen sources open up when you land on CAM 06 and muffle again when
+    // you leave it.
+    if (currentState) {
+        updateFreddyMusicBox(currentState);
+        updateChicaKitchenSound(currentState);
+    }
 }
 
 let cameraAnimating = false;
@@ -1877,12 +1974,9 @@ function onServerState(state) {
         foxyStage: a.foxy.foxyStage
     };
 
-    // Stop kitchen oven sounds when Chica leaves the kitchen
-    if (a.chica.location !== '6') {
-        stopKitchenOvenSound();
-    }
-
+    // Both of these stop themselves once their animatronic leaves CAM 06.
     updateFreddyMusicBox(state);
+    updateChicaKitchenSound(state);
 
     const aiDisplay = document.getElementById('aiDisplay');
     if (aiDisplay) {
@@ -2443,7 +2537,7 @@ function showMainMenu() {
     cameraAnimation.style.display = 'none';
     stopSound('ambience');
     stopSound('win');
-    stopKitchenOvenSound();
+    stopChicaKitchenSound();
     stopKitchenMusic();
     stopPirateSongRolls();
     stopNightCall();
