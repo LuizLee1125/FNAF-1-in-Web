@@ -316,10 +316,16 @@ function attemptMove(room, name) {
     return;
   }
 
-  // Freddy has no blanket camera stall — he keeps walking whether or not the
-  // monitor is up. His stall is specific to the 4B corner and is handled below,
-  // after the roll, because it is tied to the selected camera rather than to
-  // whether the player happens to be looking at the monitor right now.
+  /* Freddy's camera stall. He fails every movement opportunity for as long as
+     the *selected* camera is the room he is currently standing in — not just at
+     the 4B corner, which is where this used to be pinned.
+
+     Two things make it his own mechanic rather than Foxy's. It keys off which
+     camera is selected rather than off `cameraUp`, so it holds after the
+     monitor comes down; and it only applies to the room he is actually in, so
+     watching anywhere else does nothing for you. Camping CAM 4B still works
+     exactly as before — 4B is simply one of the rooms he passes through. */
+  if (name === 'freddy' && room.selectedCamera === state.location) return;
 
   // Unlucky (6) skips the roll outright — anything with AI left always moves.
   // Super Lucky (7) fails everything below AI 20; at 20 the move lands, but the
@@ -352,21 +358,14 @@ function attemptMove(room, name) {
     return;
   }
 
-  // Freddy at the 4B corner. Two separate things pin him here, and the order
-  // matters:
-  //
-  // 1. CAM 4B being the selected camera freezes him outright — he fails every
-  //    move and stays at 4B. This holds whether or not the monitor is up, since
-  //    `selectedCamera` survives the flip-down; the player has to actually
-  //    switch to another camera to release him.
-  // 2. Only once he's released does the right door decide where he goes:
-  //    open lets him in, closed sends him back to 4A.
-  //
-  // So the door check is deliberately *after* the camera check — a closed door
-  // does not push him back while the player is still sitting on 4B.
-  if (name === 'freddy' && state.location === '4B') {
-    if (room.selectedCamera === '4B') return;
+  /* Freddy at the 4B corner — his last room before the office, so the right
+     door decides where he goes: open lets him in, closed sends him back to 4A.
 
+     Camping CAM 4B still freezes him here, but that is now the general stall
+     above rather than a rule of its own. It is deliberately checked before this
+     block, so a closed right door does not push him back to 4A while the player
+     is still sitting on 4B. */
+  if (name === 'freddy' && state.location === '4B') {
     if (room.doors.right) {
       state.location = '4A'; // Retreat — the right door is shut
     } else {
