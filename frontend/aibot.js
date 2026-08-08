@@ -48,7 +48,44 @@ const AIBot = (() => {
     // the Foxy stall roll in server.js change, change these too.
     const FOXY_INTERVAL_MS = 5010;
     const BONNIE_INTERVAL_MS = 4970;
+    const CHICA_INTERVAL_MS = 4980;
     const FREDDY_INTERVAL_MS = 3020;
+    const FOXY_SPRINT_WAIT_MS = 30000;
+
+    /* ---------------------------- Running green ---------------------------
+       Every watt the bot spends comes from holding something on longer than it
+       strictly has to. The payload carries each animatronic's own countdown —
+       `movementTimerMs`, and for Foxy `stallTimerMs` / `sprintTimerMs` — so the
+       bot does not have to hold a door for the whole time someone is standing
+       at it, or tap the monitor on a fixed rhythm. It can act on the last
+       moment that still works.
+
+       A door shut for the final ~0.7s of a 5s interval instead of all 5s is
+       roughly an eighth of the cost, and taps triggered by Foxy's actual clock
+       land about once per stall-plus-interval rather than twice as often as
+       needed. Fewer taps also means proportionally fewer Golden Freddy rolls,
+       since he only rolls while the monitor is up — so the saving compounds.
+
+       The leads have to cover the worst case honestly: one tick (100ms), the
+       action cooldown, the socket hop, and whatever the state is stale by. The
+       staleness is measured rather than assumed — see sinceState(). */
+    /* 1200, not the ~300 the round trip alone needs. A tap puts the monitor up
+       for roughly a second, and the door controls do not exist while it is up
+       (handleButtonClick returns early on isCameraUp). So the lead has to cover
+       lowering the monitor as well, or the last moment arrives mid-tap and the
+       door shuts too late. TAP_BLACKOUT_MS below is the other half of that. */
+    const DOOR_LEAD_MS = 1200;
+
+    // Wider still: a tap can be pushed back by an urgent door close, and unlike
+    // a door there is no second chance — once Foxy completes an interval the
+    // stage is gone and the knock is coming.
+    const TAP_LEAD_MS = 1500;
+
+    /* How long a tap takes the doors away for: flip up, hold, flip down. Never
+       start one when a door is due to shut inside that window — the point of
+       closing at the last moment is lost if the last moment is spent with the
+       monitor in the way. */
+    const TAP_BLACKOUT_MS = 1300;
 
     // Where the camera selection rests. See fact 1.
     const PARK_CAM = '4B';
@@ -83,8 +120,10 @@ const AIBot = (() => {
     function planFor(night, customAI, cheats) {
         const has = id => !!(cheats && cheats.has && cheats.has(id));
 
-        // Mirrors REAL_TIME_SCALE and SPEED_MULTIPLIER in server.js.
-        const clockMult = (has('realTime') ? 60 : 1) * (has('speed') ? 0.5 : 1);
+        // Mirrors REAL_TIME_SCALE and SPEED_MULTIPLIER in server.js. Real Time
+        // is 45 because the base in-game hour is 80s and it has to come out at
+        // one real hour: 80 * 45 = 3600s. Change one, change both.
+        const clockMult = (has('realTime') ? 45 : 1) * (has('speed') ? 0.5 : 1);
 
         const foxyMs = FOXY_INTERVAL_MS * clockMult;
         const bonnieMs = BONNIE_INTERVAL_MS * clockMult;
@@ -107,23 +146,13 @@ const AIBot = (() => {
         if (has('unlimitedPower')) pressure -= 0.25;
         pressure = clamp(pressure, 0, 2);
 
-        /* The Foxy guarantee is binary — the interval is either under his
-           movement interval or it is not — so this does NOT tighten with
-           pressure. An earlier version scaled it down as the night got harder,
-           which bought nothing and cost a great deal: on a Speed run it landed
-           at 700ms, which would have held the monitor up about 70% of the time,
-           putting the doors out of reach and handing Golden Freddy a roll every
-           quarter second. 0.55 is the cheapest fraction that still leaves a
-           delayed tap 45% of headroom before the guarantee lapses. */
-        const TAP_FRACTION = 0.55;
-
         return {
             clockMult,
             pressure: Math.round(pressure * 100) / 100,
             foxyMs,
             bonnieMs,
-            tapIntervalMs: clamp(foxyMs * TAP_FRACTION, 900, 240000),
-            // Fast enough to sit well inside the tightest mover's window.
+            // Fast enough to sit well inside the tightest mover's window, which
+            // is what the last-second door and tap timing depends on.
             reactionMs: clamp(freddyMs / 22, 60, 220)
         };
     }
@@ -135,8 +164,48 @@ const AIBot = (() => {
             lastCamSessionAt: 0,
             lastCamLoweredAt: 0,
             frozen: false,
-            lastActionAt: 0
+            lastActionAt: 0,
+            // Identity of the last state object seen, and when it arrived. Every
+            // countdown in the payload is only correct as of that instant.
+            stateRef: null,
+            stateAt: 0
         };
+    }
+
+    /* How stale the numbers in `currentState` are. Broadcasts are 1Hz, but any
+       action of the bot's own triggers one immediately, so this is usually only
+       tens of milliseconds — and on a green run, where the bot deliberately does
+       nothing for long stretches, it stretches back out toward a second. Every
+       countdown below is corrected by it rather than trusted as-is. */
+    function sinceState() {
+        return mem.stateAt ? (Date.now() - mem.stateAt) : 0;
+    }
+
+    // Is this animatronic within `lead` of its next movement roll?
+    function movesWithin(anim, baseIntervalMs, lead) {
+        const interval = baseIntervalMs * plan.clockMult;
+        const elapsed = (anim.movementTimerMs || 0) + sinceState();
+        const remaining = interval - elapsed;
+        // A missing or nonsense timer must fail safe — shut the door, not open it.
+        return !isFinite(remaining) || remaining <= lead;
+    }
+
+    /* Soonest Foxy could advance a stage. His movement timer is pinned at zero
+       for as long as the stall runs, so the two add rather than overlap; once
+       the stall has lapsed the timer we were told is the real progress. */
+    function foxyTimeToAdvance(state) {
+        const foxy = state.animatronics.foxy;
+        const lag = sinceState();
+        const interval = FOXY_INTERVAL_MS * plan.clockMult;
+        const stallLeft = Math.max(0, (foxy.stallTimerMs || 0) - lag);
+
+        let progressed = 0;
+        if (stallLeft <= 0) {
+            const sinceStallEnded = Math.max(0, lag - (foxy.stallTimerMs || 0));
+            progressed = Math.min(interval, (foxy.movementTimerMs || 0) + sinceStallEnded);
+        }
+        const total = stallLeft + (interval - progressed);
+        return isFinite(total) ? total : 0;
     }
 
     /* -------------------------------- Actions ----------------------------- */
@@ -173,31 +242,75 @@ const AIBot = (() => {
        and the bot acts several times a second — so the reaction window is never
        close to tight. Pre-closing at 2B and 4B would roughly double door duty
        for insurance against a race that cannot happen. */
-    function doorWanted(state, side) {
+    /* `lead` is how far ahead to look. The door logic uses DOOR_LEAD_MS; the tap
+       gate passes a longer horizon to ask "will this door need shutting before
+       a tap would give the controls back?". */
+    function doorWanted(state, side, lead) {
         const a = state.animatronics;
+        const ahead = lead === undefined ? DOOR_LEAD_MS : lead;
+
         if (side === 'left') {
-            if (a.bonnie.location === 'office_door_left') return true;
-            // Stage 3 means the cove is empty and he is coming, on his own timer.
-            return a.foxy.foxyStage >= 3;
+            // Standing at the door is not itself a reason to shut it. She only
+            // gets in on a movement roll, so the door only has to be down for
+            // the moment that roll lands.
+            if (a.bonnie.location === 'office_door_left') {
+                return movesWithin(a.bonnie, BONNIE_INTERVAL_MS, ahead);
+            }
+            const foxy = a.foxy;
+            if (foxy.foxyStage >= 3) {
+                // Already running: the window is short, so no cleverness here.
+                if (foxy.sprinting) return true;
+                // Otherwise he leaves on his own countdown, which is visible.
+                const left = (foxy.sprintTimerMs || FOXY_SPRINT_WAIT_MS * plan.clockMult) - sinceState();
+                return !isFinite(left) || left <= ahead;
+            }
+            return false;
         }
-        if (a.chica.location === 'office_door_right') return true;
+
+        if (a.chica.location === 'office_door_right') {
+            return movesWithin(a.chica, CHICA_INTERVAL_MS, ahead);
+        }
         // Insurance only — the selection lives on 4B, so this should never fire.
         return a.freddy.location === '4B' && state.selectedCamera !== PARK_CAM;
     }
 
-    function doorNeedsChange(state) {
+    // Would any open door need shutting within `horizon`?
+    function doorClosingWithin(state, horizon) {
         for (const side of ['left', 'right']) {
-            if (state.doors[side] === doorWanted(state, side)) continue;
             if (jammedState && jammedState[side]) continue;
-            return side;
+            if (!state.doors[side] && doorWanted(state, side, horizon)) return side;
+        }
+        return null;
+    }
+
+    /* Shutting a door late is fatal. Opening one late only wastes power. They
+       are not the same kind of pending change and must not be collapsed into
+       one "door needs attention" test — doing that starved Foxy's tap window,
+       because on a busy night some door almost always wants *opening*, and that
+       was enough to keep blocking the monitor until he reached stage 3. */
+    function doorNeedsClosing(state) {
+        for (const side of ['left', 'right']) {
+            if (jammedState && jammedState[side]) continue;
+            if (!state.doors[side] && doorWanted(state, side)) return side;
+        }
+        return null;
+    }
+
+    function doorNeedsOpening(state) {
+        for (const side of ['left', 'right']) {
+            if (jammedState && jammedState[side]) continue;
+            if (state.doors[side] && !doorWanted(state, side)) return side;
         }
         return null;
     }
 
     function manageDoors(state) {
-        const side = doorNeedsChange(state);
-        if (!side) return false;
-        return setDoor(state, side, doorWanted(state, side));
+        // Closing always outranks opening, including across sides.
+        const shut = doorNeedsClosing(state);
+        if (shut) return setDoor(state, shut, true);
+        const open = doorNeedsOpening(state);
+        if (open) return setDoor(state, open, false);
+        return false;
     }
 
     /* -------------------------------- Camera ------------------------------ */
@@ -241,7 +354,10 @@ const AIBot = (() => {
         if (foxy.ai <= 0) return false;
         // Past stalling. The left door is the answer now, not the monitor.
         if (foxy.foxyStage >= 3) return false;
-        return true;
+        // Only when his own clock says he is about to get somewhere. Tapping on
+        // a fixed rhythm re-armed a stall that still had seconds left on it,
+        // paying for the monitor and for a Golden Freddy roll to buy nothing.
+        return foxyTimeToAdvance(state) <= TAP_LEAD_MS;
     }
 
     function manageCamera(state) {
@@ -252,18 +368,22 @@ const AIBot = (() => {
             // Always leave on 4B: that is what pins Freddy once it comes down.
             if (selectedCamera !== PARK_CAM) return goToCam(PARK_CAM);
             if (!mem.camReadyAt) mem.camReadyAt = now;
-            // A door that wants changing outranks the rest of the tap, and the
-            // controls are unreachable until the monitor is down.
-            if (doorNeedsChange(state) !== null || now - mem.camReadyAt >= TAP_HOLD_MS) {
+            // Only a door that needs *shutting* is worth cutting a tap short
+            // for; the controls are unreachable until the monitor is down. A
+            // pending open can wait for the tap to finish, which it would have
+            // to anyway.
+            if (doorNeedsClosing(state) !== null || now - mem.camReadyAt >= TAP_HOLD_MS) {
                 return lowerMonitor();
             }
             return false;
         }
 
-        if (doorNeedsChange(state) !== null) return false;
+        // Not just "is a door wrong now" — is one going to want shutting while
+        // the tap has the controls. Starting a tap in front of that is what
+        // makes an otherwise correct last-second door arrive late.
+        if (doorClosingWithin(state, DOOR_LEAD_MS + TAP_BLACKOUT_MS) !== null) return false;
         if (now - mem.lastCamLoweredAt < CAM_RELAUNCH_GAP_MS) return false;
         if (!needsTaps(state)) return false;
-        if (now - mem.lastCamSessionAt < plan.tapIntervalMs) return false;
         return raiseMonitor('tap');
     }
 
@@ -284,6 +404,13 @@ const AIBot = (() => {
         const state = currentState;
         if (!state || !state.animatronics || state.power <= 0 || isPowerOutage) return;
         if (typeof gameActive !== 'undefined' && !gameActive) return;
+
+        // Note when this payload landed; every countdown in it is read relative
+        // to that instant, not to now.
+        if (state !== mem.stateRef) {
+            mem.stateRef = state;
+            mem.stateAt = Date.now();
+        }
 
         const a = state.animatronics;
 
@@ -312,7 +439,7 @@ const AIBot = (() => {
             typeof runCheats !== 'undefined' ? runCheats : new Set()
         );
         mem = freshMemory();
-        mem.lastCamSessionAt = Date.now() - plan.tapIntervalMs;
+        mem.lastCamSessionAt = 0;
         running = true;
         timer = setInterval(tick, TICK_MS);
     }

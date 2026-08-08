@@ -12,9 +12,21 @@ const io = new Server(server, {
 app.use(express.static(path.join(__dirname, '../frontend')));
 
 const TICK_MS = 100;
-const HOUR_TICKS = 60;
 const TOTAL_HOURS = 6;
-const POWER_DRAIN_BASE = 0.09;
+
+/* Night length and power drain, tuned toward FNAF 1 rather than toward being
+   comfortable.
+
+   80s per in-game hour makes a shift 8 minutes. POWER_DRAIN_BASE is per usage
+   bar per second, so a dark office at usage 1 loses 1% every 9.6s and a fully
+   lit one at usage 5 loses 1% every 1.9s — the rates the original is commonly
+   documented at.
+
+   The two compound, which is the point: the night is a third longer *and* the
+   meter runs ~15% faster, so simply sitting still now costs about 50% of the
+   power where it used to cost 32%. Doors are no longer nearly free. */
+const HOUR_LENGTH_MS = 80000;
+const POWER_DRAIN_BASE = 0.104;
 
 // Movement opportunity intervals from the original game — each animatronic rolls
 // 1-20 on its own clock and fails the move if the roll exceeds its AI level.
@@ -56,8 +68,24 @@ const GOLDEN_RESPAWN_COOLDOWN_MS = 30000;
    The line drawn throughout: opportunity clocks scale, player reaction windows
    never do. Stretching Golden Freddy's 4s in the office, or Foxy's door-close
    window, to four minutes would retire both threats outright.               */
-const REAL_TIME_SCALE = 60;
+/* 45, not 60: Real Time means one real hour per in-game hour, and the base hour
+   is now 80s rather than 60s. 80 * 45 = 3600s. If HOUR_LENGTH_MS changes, this
+   has to change with it, and so does the matching constant in aibot.js. */
+const REAL_TIME_SCALE = 3600000 / HOUR_LENGTH_MS;
 const SPEED_MULTIPLIER = 0.5;
+
+/* Real Time is deliberately *not* a straight 1:1 rescale of the meter.
+
+   Everything on the server slows by the same factor, so in principle the same
+   share of the power gets used. But that assumes the player slows down too, and
+   a person does not check a door once every five minutes — they check at human
+   speed, which burns far more per in-game hour than the scaling accounts for.
+   Animatronics also sit at a door for minutes at a time, so the door is
+   genuinely shut for longer.
+
+   This hands some of that back. Deliberately partial: a six-hour shift should
+   still be a test of power management, not a formality. */
+const REAL_TIME_DRAIN_RELIEF = 1.35;
 
 const GOLDEN_CHEAT_AI = 50;
 const GOLDEN_CHEAT_DENOMINATOR = 1000;
@@ -177,9 +205,19 @@ const AI_SCHEDULES = {
 const rooms = new Map();
 const roomIntervals = new Map();
 
-// Power Loss (4) skips the ramp and knocks the full 21% off from the first one.
+/* Power Loss (4) starts the ramp near its top instead of walking up from 1%.
+
+   It used to jump straight to a flat 21% on the first knock. Against the
+   current drain that left no survivable line at all — an 8-minute 4/20 night
+   costs roughly 77% of the meter before a single knock, so an 80% start plus
+   one 21% knock is already over. Starting at 11% and climbing keeps the cheat
+   punishing without making it arithmetic-proof. */
 function getFoxyKnockDrain(knockCount, room) {
-  if (hasCheat(room, 'powerLoss')) return 21;
+  if (hasCheat(room, 'powerLoss')) {
+    if (knockCount <= 1) return 11;
+    if (knockCount === 2) return 16;
+    return 21;
+  }
   if (knockCount <= 1) return 1;
   if (knockCount === 2) return 6;
   if (knockCount === 3) return 11;
@@ -207,12 +245,16 @@ function createRoom(roomId, night, customAI, cheats) {
     timeScale,
     speedMult,
     clockMult: timeScale * speedMult,
+    // Power is divided by this, not by timeScale alone — see the note on
+    // REAL_TIME_DRAIN_RELIEF. Speed must never appear here: it changes how fast
+    // animatronics move, not how fast the building burns electricity.
+    drainDivisor: timeScale * (cheatSet.has('realTime') ? REAL_TIME_DRAIN_RELIEF : 1),
     state: 'waiting',
     hour: 0,
     hourTimerMs: 0,
     broadcastTimerMs: 0,
     lastTickTime: now,
-    power: cheatSet.has('powerLoss') ? 80.0 : 100.0,
+    power: cheatSet.has('powerLoss') ? 90.0 : 100.0,
     usage: 1,
     players: [],
     doors: { left: false, right: false },
@@ -460,7 +502,7 @@ function gameTick(roomId) {
   room.lastTickTime = now;
 
   // Hour tracking (60 seconds per hour, or 60 minutes under Real Time)
-  const hourLengthMs = 60000 * room.timeScale;
+  const hourLengthMs = HOUR_LENGTH_MS * room.timeScale;
   room.hourTimerMs += deltaMs;
   if (room.hourTimerMs >= hourLengthMs) {
     room.hourTimerMs -= hourLengthMs;
@@ -615,9 +657,7 @@ function gameTick(roomId) {
   room.usage = usage;
 
   if (room.power > 0) {
-    // Divided by timeScale, not clockMult: a 6-hour night has to burn the meter
-    // over the same share of the shift, and Speed must not touch power at all.
-    drainPower(roomId, room, POWER_DRAIN_BASE * (deltaMs / 1000) * usage / room.timeScale);
+    drainPower(roomId, room, POWER_DRAIN_BASE * (deltaMs / 1000) * usage / room.drainDivisor);
   }
 
   room.broadcastTimerMs += deltaMs;

@@ -29,7 +29,7 @@ const CHEATS = [
     },
     {
         id: 'powerLoss', num: 4, name: 'POWER LOSS',
-        desc: 'Nights start at 80% power. Foxy knocks drain 21% at once.',
+        desc: 'Nights start at 90% power. Foxy knocks ramp 11% to 21%.',
         blocksStars: false, starIndex: 4, mutex: 'unlimitedPower'
     },
     {
