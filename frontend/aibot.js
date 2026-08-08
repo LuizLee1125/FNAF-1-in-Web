@@ -1,45 +1,4 @@
-/* ------------------------------ AI Mode (cheat 10) -------------------------
-   A bot that plays the shift, sizing itself to whatever shift it is handed —
-   Night 1 through 6, Night 7 at any slider setting including 0/0/0/0 and 4/20,
-   with any combination of cheats on top. There is no strength setting: the
-   numbers below are derived from the run's own clocks, so a night the server
-   has made faster automatically gets a faster bot.
-
-   It plays through the player's controls. Doors, lights and the camera map are
-   unavailable while the monitor is up (see handleButtonClick in client.js, and
-   the panels script.js hides), so the bot has to put the monitor down before it
-   can touch a door. The server has no such guard — reaching past the UI
-   straight to sendAction would be cheating — so `controlsAvailable()` is the
-   single choke point every door action goes through.
-
-   It does read animatronic positions directly. That is a deliberate reversal of
-   this cheat's original "must not know or predict movement" rule, made because
-   4/20 with cheats stacked cannot be survived on partial information. The
-   honest, player-visible-only version is in git history if it is ever wanted
-   back.
-
-   ---------------------------------------------------------------------------
-   Four facts out of server.js drive the whole strategy:
-
-   1. Freddy is frozen for as long as 4B is the *selected* camera, and the
-      selection survives the monitor coming down. So the selection lives on 4B
-      and he is simply never a threat.
-   2. Raising the monitor arms Foxy a fresh stall, and he cannot move while it
-      runs or while the monitor is up. His movement timer resets on every
-      stalled tick, so he needs a full uninterrupted interval to advance.
-   3. The right light never reveals Freddy — he steps 4B -> office directly.
-      Irrelevant here since positions are read directly, but it is why the
-      camera selection matters more than any light.
-   4. Nobody in the office runs a kill timer. Freddy makes every control fatal
-      and Bonnie/Chica kill on the next monitor flip, but sitting perfectly
-      still survives to 6 AM.
-
-   Facts 1 and 2 combine: a short tap of the monitor *while already parked on
-   4B* stalls Foxy and keeps Freddy pinned, for about half a second. That is the
-   entire camera strategy. There is no sweep — every second spent off 4B is a
-   second Freddy can use.
-
-   Loaded after script.js so it can reach that file's top-level bindings.     */
+// AI Mode bot (cheat 10) - Autonomously plays shifts by reading game state and operating player controls.
 
 const AIBot = (() => {
     const TICK_MS = 100;
@@ -52,28 +11,7 @@ const AIBot = (() => {
     const FREDDY_INTERVAL_MS = 3020;
     const FOXY_SPRINT_WAIT_MS = 30000;
 
-    /* ---------------------------- Running green ---------------------------
-       Every watt the bot spends comes from holding something on longer than it
-       strictly has to. The payload carries each animatronic's own countdown —
-       `movementTimerMs`, and for Foxy `stallTimerMs` / `sprintTimerMs` — so the
-       bot does not have to hold a door for the whole time someone is standing
-       at it, or tap the monitor on a fixed rhythm. It can act on the last
-       moment that still works.
-
-       A door shut for the final ~0.7s of a 5s interval instead of all 5s is
-       roughly an eighth of the cost, and taps triggered by Foxy's actual clock
-       land about once per stall-plus-interval rather than twice as often as
-       needed. Fewer taps also means proportionally fewer Golden Freddy rolls,
-       since he only rolls while the monitor is up — so the saving compounds.
-
-       The leads have to cover the worst case honestly: one tick (100ms), the
-       action cooldown, the socket hop, and whatever the state is stale by. The
-       staleness is measured rather than assumed — see sinceState(). */
-    /* 1200, not the ~300 the round trip alone needs. A tap puts the monitor up
-       for roughly a second, and the door controls do not exist while it is up
-       (handleButtonClick returns early on isCameraUp). So the lead has to cover
-       lowering the monitor as well, or the last moment arrives mid-tap and the
-       door shuts too late. TAP_BLACKOUT_MS below is the other half of that. */
+    // Lead time for closing doors before a mover's window expires.
     const DOOR_LEAD_MS = 1200;
 
     // Wider still: a tap can be pushed back by an urgent door close, and unlike
@@ -81,10 +19,7 @@ const AIBot = (() => {
     // stage is gone and the knock is coming.
     const TAP_LEAD_MS = 1500;
 
-    /* How long a tap takes the doors away for: flip up, hold, flip down. Never
-       start one when a door is due to shut inside that window — the point of
-       closing at the last moment is lost if the last moment is spent with the
-       monitor in the way. */
+    // Blackout duration during monitor tap (flip up, hold, flip down).
     const TAP_BLACKOUT_MS = 1300;
 
     // Where the camera selection rests. See fact 1.
@@ -92,10 +27,7 @@ const AIBot = (() => {
 
     const TAP_HOLD_MS = 120;
 
-    // Do not raise the monitor again within this of lowering it: closeCamera
-    // only emits `setCamera false` at the end of its flip-down, and a raise that
-    // overlaps it makes client and server disagree about `cameraUp`, which
-    // trips forceCloseCamera and burns the tap.
+    // Minimum delay between lowering and raising monitor to prevent state desync.
     const CAM_RELAUNCH_GAP_MS = 420;
 
     let timer = null;
@@ -107,16 +39,7 @@ const AIBot = (() => {
 
     /* ------------------------------ Sizing up ----------------------------- */
 
-    /* How the bot fits itself to the night. Everything here comes off the run's
-       own clocks rather than a difficulty label, so it covers combinations
-       nobody enumerated — Speed plus Real Time, say, or 4/20 with three cheats.
-
-       The one number that must be right is the tap interval. Foxy needs a full
-       uninterrupted movement interval to advance a stage (fact 2), and a tap
-       re-arms his stall whenever it has expired, so the longest clear window he
-       can ever get is one tap interval. Keep that under his interval and he can
-       never advance at all — which is worth far more than it costs, because it
-       also retires the knock that drains 1/6/11/16/21% and never resets. */
+    // Derives reaction timing and Foxy tap intervals based on night AI levels and active cheats.
     function planFor(night, customAI, cheats) {
         const has = id => !!(cheats && cheats.has && cheats.has(id));
 
@@ -172,11 +95,7 @@ const AIBot = (() => {
         };
     }
 
-    /* How stale the numbers in `currentState` are. Broadcasts are 1Hz, but any
-       action of the bot's own triggers one immediately, so this is usually only
-       tens of milliseconds — and on a green run, where the bot deliberately does
-       nothing for long stretches, it stretches back out toward a second. Every
-       countdown below is corrected by it rather than trusted as-is. */
+    // Returns milliseconds elapsed since current state payload arrived.
     function sinceState() {
         return mem.stateAt ? (Date.now() - mem.stateAt) : 0;
     }
@@ -190,9 +109,7 @@ const AIBot = (() => {
         return !isFinite(remaining) || remaining <= lead;
     }
 
-    /* Soonest Foxy could advance a stage. His movement timer is pinned at zero
-       for as long as the stall runs, so the two add rather than overlap; once
-       the stall has lapsed the timer we were told is the real progress. */
+    // Calculates remaining time before Foxy advances a stage.
     function foxyTimeToAdvance(state) {
         const foxy = state.animatronics.foxy;
         const lag = sinceState();
@@ -232,19 +149,7 @@ const AIBot = (() => {
         return true;
     }
 
-    /* What each door should be right now.
-
-       Shutting a door only on the ticks it is actually needed is most of where
-       the power comes from: one held on suspicion costs several times one held
-       on fact. There is deliberately no pre-closing a room early. Whoever is at
-       a door stays there for a full movement interval, the server broadcasts
-       state every second *and* immediately after any action of the bot's own,
-       and the bot acts several times a second — so the reaction window is never
-       close to tight. Pre-closing at 2B and 4B would roughly double door duty
-       for insurance against a race that cannot happen. */
-    /* `lead` is how far ahead to look. The door logic uses DOOR_LEAD_MS; the tap
-       gate passes a longer horizon to ask "will this door need shutting before
-       a tap would give the controls back?". */
+    // Checks if door needs to be closed based on animatronic proximity and movement intervals.
     function doorWanted(state, side, lead) {
         const a = state.animatronics;
         const ahead = lead === undefined ? DOOR_LEAD_MS : lead;
@@ -283,11 +188,7 @@ const AIBot = (() => {
         return null;
     }
 
-    /* Shutting a door late is fatal. Opening one late only wastes power. They
-       are not the same kind of pending change and must not be collapsed into
-       one "door needs attention" test — doing that starved Foxy's tap window,
-       because on a busy night some door almost always wants *opening*, and that
-       was enough to keep blocking the monitor until he reached stage 3. */
+    // Checks if doors require closing.
     function doorNeedsClosing(state) {
         for (const side of ['left', 'right']) {
             if (jammedState && jammedState[side]) continue;
@@ -342,13 +243,7 @@ const AIBot = (() => {
         return true;
     }
 
-    /* Taps exist for exactly one reason: to keep Foxy stalled. So the bot only
-       taps when Foxy can actually move. On a night where his AI is 0 — the
-       first hours of Night 1, or a 0/0/0/0 custom night — it never raises the
-       monitor at all, which also means Golden Freddy never gets a single roll,
-       since he only rolls while the camera is up. Sitting still is both the
-       cheapest and the safest line available, and it is the whole reason this
-       is derived per-tick from the live AI rather than fixed at the start. */
+    // Determines if camera taps are needed to keep Foxy stalled.
     function needsTaps(state) {
         const foxy = state.animatronics.foxy;
         if (foxy.ai <= 0) return false;
@@ -387,10 +282,7 @@ const AIBot = (() => {
         return raiseMonitor('tap');
     }
 
-    /* Golden Freddy is in the office, on screen, and force-closes the monitor
-       when he lands. Pulling it back up is what sends him away, and there are
-       only four seconds — shorter than any tap interval, so he gets his own
-       branch ahead of everything else and skips the action cooldown. */
+    // Raises monitor to dispel Golden Freddy when present.
     function manageGoldenFreddy() {
         const sprite = document.getElementById('goldenFreddy');
         if (!sprite || sprite.style.display === 'none') return false;
@@ -414,10 +306,7 @@ const AIBot = (() => {
 
         const a = state.animatronics;
 
-        /* Someone is standing in the office. Freddy makes every control fatal
-           and Bonnie or Chica kill on the next monitor flip — but none of them
-           run a timer (fact 4), so doing absolutely nothing survives to 6 AM.
-           Sitting still is the winning move. */
+        // If an animatronic is in office, sit still to survive.
         if (a.freddy.inOffice || a.bonnie.inOffice || a.chica.inOffice) return;
 
         if (manageGoldenFreddy()) return;

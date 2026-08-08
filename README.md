@@ -1,4 +1,4 @@
-# 🎮 FNAF 1 in Web
+# FNAF 1 in Web
 
 A browser-based recreation of **Five Nights at Freddy's 1**, developed using modern web technologies.
 This project aims to bring the classic survival horror experience to the web while demonstrating 
@@ -9,7 +9,7 @@ Five Nights at Freddy's and all related assets belong to Scott Cawthon.
 
 ---
 
-## 📖 Overview
+## --Overview--
 
 FNAF 1 in Web recreates the gameplay mechanics of the original Five Nights at Freddy's using web technologies. 
 Players take on the role of the night security guard and must survive until 6:00 AM by monitoring security cameras, 
@@ -17,21 +17,23 @@ managing limited power, and defending against the animatronics.
 
 ---
 
-## ✨ Features
+## --Features--
 
-- 🏢 Interactive security office
-- 📹 Functional camera system
-- 🚪 Left and right door controls
-- 💡 Hallway lights
-- ⚡ Power management system
-- 🤖 Animatronic AI behavior
-- 🌙 Night progression
-- 🔊 Sound effects and atmosphere
-- 📱 Responsive web interface
+- Interactive security office
+- Functional camera system
+- Left and right door controls
+- Hallway lights
+- Power management system
+- Animatronic AI behavior
+- Night progression
+- Sound effects and atmosphere
+- Responsive web interface
+- More reactive Golden Freddy mechanic
+- Cheats menu
 
 ---
 
-## 🛠️ Built With
+## --Built With--
 
 ### Frontend
 - HTML5
@@ -47,7 +49,7 @@ managing limited power, and defending against the animatronics.
 
 ---
 
-## 📂 Project Structure
+## --Project Structure--
 
 ```
 FNAF-1-in-Web/
@@ -70,7 +72,7 @@ FNAF-1-in-Web/
 
 ---
 
-## 🚀 Getting Started
+## --Getting Started--
 
 ### Prerequisites
 
@@ -103,7 +105,7 @@ npm install
 
 ---
 
-## ▶️ Running the Project
+## --Running the Project--
 
 Start the backend server:
 
@@ -119,7 +121,7 @@ node server.js
 
 ---
 
-## 📜 License
+## --License--
 
 This project is intended for **educational and portfolio purposes only**.
 
@@ -127,14 +129,14 @@ Five Nights at Freddy's is the intellectual property of **Scott Cawthon**. No co
 
 ---
 
-## 👨‍💻 Author
+## --Author--
 
-**Luiz Lee**
+**Luiz Alfonso Lee**
 
 GitHub: https://github.com/LuizLee1125
 
 ---
 
-## ⭐ Support
+## --Support--
 
 If you enjoyed this project, consider giving the repository a ⭐ on GitHub!

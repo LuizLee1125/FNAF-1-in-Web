@@ -18,13 +18,11 @@ const usageDisplay = document.getElementById('usageDisplay');
 
 // State Variables
 let mouseX = 0;
-// The office plate is 1600x720 against a 1280x720 frame, so #office is 125% wide
-// and `left` travels from 0% (hard right) to -25% (hard left); -12.5% is centred.
+// Office pan bounds (-25% to 0%, default -12.5%).
 const OFFICE_PAN_MIN = -25;
 const OFFICE_PAN_MAX = 0;
 const DEFAULT_CAMERA_PAN = -12.5;
-// Constant-speed pan: percent of #office width per second. 60 crosses the full
-// 320px of overflow in a little under half a second.
+// Office pan speed (% of width per second).
 const OFFICE_PAN_SPEED = 60;
 let cameraPan = DEFAULT_CAMERA_PAN;
 let isCameraUp = false;
@@ -32,16 +30,10 @@ let selectedCamera = '1A';
 let currentNight = 1;
 let currentRoomId = null;
 let currentState = null;
-// The AI levels the current run actually started with — `customAiLevels` keeps
-// being edited on the Custom Night screen, so it can't answer "was this 4/20?".
+// Initial AI levels for current active run.
 let currentCustomAI = null;
 
-/* ---------------------------- Cheats in flight -----------------------------
-   The menu can be edited at any time, but a run has to keep the cheats it
-   started with. The authority is therefore the list the server froze onto the
-   room and echoes back in every state payload; the menu's own list only seeds
-   it until the first payload lands. Everything client-side reads runCheatOn(),
-   never isCheatOn(), once a night is underway. */
+// Server-sent cheat list for active run (seeded by local menu state).
 let runCheats = new Set();
 
 function setRunCheats(list) {
@@ -52,11 +44,7 @@ function runCheatOn(id) {
     return runCheats.has(id);
 }
 
-/* ---------------------------- Map Hacks (cheat 1) --------------------------
-   Room coordinates are the very percentages the .camera-position markers
-   already carry in index.html, so the dots line up with the map plate for free.
-   The three office-side entries have no marker of their own and are placed by
-   hand along the bottom of the plate. */
+// Mini-map room dot coordinates and color assignments.
 const MAP_DOT_POSITIONS = {
     '1A': [44.5, 15], '1B': [44.6, 36.5], '1C': [10.4, 46.3],
     '2A': [31.4, 66], '2B': [31.4, 84], '3': [18.5, 68.8],
@@ -74,8 +62,7 @@ const MAP_DOT_COLORS = {
     foxy: '#c02020'     // red
 };
 
-// Fixed per animatronic rather than computed from who else is in the room, so a
-// dot never jumps sideways just because someone walked in beside it.
+// Fixed dot offsets per animatronic.
 const MAP_DOT_OFFSETS = {
     freddy: [-2.6, -2.6],
     bonnie: [2.6, -2.6],
@@ -97,9 +84,7 @@ function renderMapDots(layer, anims) {
         }
 
         const data = anims[name];
-        // Foxy never walks the graph — his location stays 1C and the stage is
-        // what actually advances, so he is pinned to the cove and goes hollow
-        // once it's empty.
+        // Foxy stays pinned to 1C and goes hollow on Stage 3.
         const room = name === 'foxy' ? '1C' : (data && data.location);
         const pos = MAP_DOT_POSITIONS[room];
         if (!pos) {
@@ -139,8 +124,7 @@ let cctvStartTime = Date.now();
 let cctvStartPan = -3;
 let cctvTargetPan = 3;
 let cctvPanX = -3;
-// The feed sits centred with 160px of plate hidden on each side, so a ±6%
-// (96px) drift stays inside the artwork and never exposes a black edge.
+// CCTV pan boundaries (±6%).
 const CCTV_PAN_RANGE = 6;
 const CCTV_MOVE_DURATION = 2200; // 2.2 seconds (slightly faster slide)
 const CCTV_WAIT_DURATION = 2000; // 2 seconds
@@ -181,30 +165,7 @@ function updateCctvPan() {
     cameraFeed.style.transform = `translateX(${cctvPanX}%)`;
 }
 
-/* ------------------------------ Pixel text --------------------------------
-   The HUD has to read as the same blocky bitmap face as "kitchen txt.png".
-   Decoding that plate shows it is a 5x7 bitmap on a 6x8 cell, upscaled ~3.71x
-   (371x54 for two lines; its row runs repeat in groups of 3-4 pixels).
-
-   No such font ships with the browser, so the text is drawn tiny, thresholded
-   to 1-bit — which is what kills the antialiasing and produces hard square
-   pixels — and then upscaled with image-rendering: pixelated. Each glyph is
-   centred in its own fixed cell so the result stays on an exact monospace grid.
-
-   Blockiness is set by how small the source is drawn before it gets blown up:
-   a bigger cell means finer steps for the same on-screen size. */
-const PIXEL_FONT_PX = 12;
-const PIXEL_CELL_W = 8;        // Volter's native 12px cell advance
-const PIXEL_CELL_H = 14;
-const PIXEL_BASELINE = 10;
-const PIXEL_ALPHA_CUT = 40;    // Clean threshold for Volter pixel glyphs
-// Keep the on-screen glyph pitch on the camera-name plates' 21.63px regardless
-// of how the source cell is sized, so changing the two above only changes grain.
-const PIXEL_TARGET_ADVANCE_PX = 21.63;
-const PIXEL_UPSCALE_CQH = (PIXEL_TARGET_ADVANCE_PX / PIXEL_CELL_W) / 720 * 100;
-// Spelled out rather than read from --fnaf-font: ctx.font silently ignores a
-// value it cannot parse, which would leave the HUD in 10px sans-serif.
-const PIXEL_FONT_STACK = 'Volter, Consolas, "Lucida Console", "DejaVu Sans Mono", monospace';
+// Updates text content for live HUD elements.
 
 function drawPixelText(el, text) {
     if (!el) return;
@@ -213,19 +174,7 @@ function drawPixelText(el, text) {
     }
 }
 
-/* --------------------------- Text plate matting ---------------------------
-   The extracted text assets lost their alpha channel: each one is exactly two
-   flat colours, white text sitting on a solid grey matte. The matte value is
-   not consistent across the set — 90,90,90 on most, 83,83,83 on READY,
-   180,180,180 on the CAM 4B map label — so it is detected rather than assumed.
-
-   Left alone they render as grey boxes floating over the scene. Key the matte
-   back out once per asset and cache the result.
-
-   Detection requires the image to be two colours covering ~all of it, both
-   neutral grey, and keys the darker one. Photographs (the animatronic
-   portraits, the power gauge) have thousands of colours and are left alone —
-   and only elements tagged .text-plate are ever passed in.                  */
+// Key out solid background matte on extracted text assets to render with transparency.
 const plateCache = new Map();
 
 function keyOutPlateMatte(src) {
@@ -298,8 +247,7 @@ function initTextPlates() {
     document.querySelectorAll('img.text-plate').forEach(el => {
         setPlateSrc(el, el.getAttribute('src'));
     });
-    // Warm the cache for plates that get swapped in mid-game, so the first
-    // camera switch or night intro doesn't flash the un-keyed version.
+    // Pre-warm plate cache for dynamic images.
     Object.keys(CAMERA_NAMES).forEach(cam => keyOutPlateMatte(`textures/camera/camera names/${cam}.png`));
     [1, 2, 3, 4, 5, 6, 7].forEach(n => keyOutPlateMatte('textures/main menu/' + getNightIntroFilename(n)));
 }
@@ -350,8 +298,7 @@ const audioSources = {
     menuAmbience: 'audio/main menu ambience.mp3',
     error: 'audio/error.wav',
     musicBox: 'audio/music box.wav',
-    kitchenMusicBox: 'audio/music box.wav', // separate element: the power-outage
-                                            // cue uses musicBox at the same time
+    kitchenMusicBox: 'audio/music box.wav', // Power-outage music box cue
     pirateSong: 'audio/pirate song2.wav',
     win: 'audio/win.mp3',
     run: 'audio/run.wav',
@@ -362,8 +309,7 @@ const audioSources = {
     freddyLaugh2: 'audio/Laugh_Giggle_Girl_2d.wav',
     freddyLaugh3: 'audio/Laugh_Giggle_Girl_8d.wav',
     mainMenu2: 'audio/main_menu1.wav',
-    // The four oven clips are not listed here: they share one element so the
-    // Web Audio routing survives swapping between them. See OVEN_CLIPS.
+    // Note: Oven clips managed separately in OVEN_CLIPS.
     voiceover1: 'audio/voiceover1c.wav',
     voiceover2: 'audio/voiceover2a.wav',
     voiceover3: 'audio/voiceover3.wav',
@@ -437,13 +383,9 @@ function playSound(name) {
 window.addEventListener('pointerdown', unlockAudio, { once: true });
 window.addEventListener('keydown', unlockAudio, { once: true });
 
-/* ------------------------------- Phone call ------------------------------- */
-/* The night's message comes in a few seconds after the shift starts. A mute
-   button sits beside the camera's red dot for the first stretch of the call;
-   after that the message is committed and plays out in full. */
-
-// Nights 6 and 7 have no recording, so they are absent from the map on purpose.
+// Phone call manager.
 const NIGHT_VOICEOVERS = {
+    // Nights 6 and 7 have no recording, so they are absent from the map.
     1: 'voiceover1',
     2: 'voiceover2',
     3: 'voiceover3',
@@ -484,8 +426,7 @@ function detachCallEndedHandler() {
     callEndedHandler = null;
 }
 
-// Called on every night boundary as well as on death and on the win, so a call
-// left running can never bleed into the next run.
+// Stop active phone call audio.
 function stopNightCall() {
     clearCallTimers();
     detachCallEndedHandler();
@@ -535,9 +476,7 @@ if (muteCallButton) {
     });
 }
 
-// Measure against the letterboxed game frame, not the viewport: on any window
-// that isn't exactly 16:9 there are black bars, and dividing by innerWidth put
-// the pan trigger zones in the wrong place (and never let you reach the edges).
+// Update normalized mouse X relative to letterboxed game window.
 document.addEventListener('mousemove', (e) => {
     const rect = gameWindow.getBoundingClientRect();
     if (!rect.width) return;
@@ -583,12 +522,7 @@ function updateOfficeTexture(state) {
     }
 }
 
-function updateDoorTexture(doorEl, side, isOpen) {
-    if (!doorEl) return;
-    const closedTexture = side === 'left' ? 'textures/doors/left/100.png' : 'textures/doors/right/104.png';
-    const openTexture = side === 'left' ? 'textures/doors/left/101.png' : 'textures/doors/right/106.png';
-    doorEl.style.backgroundImage = `url('${isOpen ? openTexture : closedTexture}')`;
-}
+
 
 function updateDoorTextureAnimated(doorEl, side, isClosed) {
     if (!doorEl) return;
@@ -757,8 +691,7 @@ function updateCameraTexture(state) {
     }
 
     if (cam === '6') {
-        // The kitchen camera is dead in the original — black plate plus the
-        // "CAMERA DISABLED / AUDIO ONLY" caption.
+        // CAM 6 is audio-only (black feed).
         cameraFeed.style.display = 'none';
         cameraOverlay.style.backgroundImage = 'none';
         cameraOverlay.style.backgroundColor = '#000';
@@ -875,8 +808,7 @@ const jumpscareFrames = {
     ]
 };
 
-/* Golden Freddy is the odd one out: a single held frame rather than a sheet, so
-   he is kept out of jumpscareFrames and driven by his own path below. */
+// Golden Freddy jumpscare sprite.
 const GOLDEN_FREDDY_JUMPSCARE = 'textures/jumpscares/golden freddy/548.png';
 const GOLDEN_FREDDY_SPRITE = 'textures/office/misc/golden freddy sprite.png';
 const GOLDEN_FREDDY_JUMPSCARE_MS = 2000;
@@ -991,13 +923,11 @@ function triggerJumpscare(reason) {
     if (deathStaticScreen) deathStaticScreen.style.display = 'none';
     if (gameOverScreen) gameOverScreen.style.display = 'none';
 
-    // Close the run out on the server too. The power-outage scare is decided
-    // entirely client-side, so without this the room keeps ticking to 6 AM.
+    // End run on jumpscare.
     if (typeof endRun === 'function') endRun();
     if (typeof AIBot !== 'undefined') AIBot.stop();
 
-    // Kill the room the moment the scare lands — the office ambience used to
-    // keep humming underneath it all the way to the Game Over screen.
+    // Stop all ambient audio on jumpscare.
     stopSound('ambience');
     stopSound('on_cam');
     stopSound('musicBox');
@@ -1012,17 +942,13 @@ function triggerJumpscare(reason) {
         jumpscare.style.zIndex = '1000';
     }
 
-    // Play at a fixed fast rate rather than stretching the sheet over a fixed
-    // duration: the sheets range from 11 to 28 frames, so a fixed duration made
-    // the short ones crawl at 11fps. 20ms/frame is 50fps for all of them.
+    // Jumpscare animation frame rate (50fps).
     const FRAME_MS = 20;
     const MIN_ONSCREEN_MS = 700;
     const animMs = anim.length * FRAME_MS;
     const totalDurationMs = Math.max(MIN_ONSCREEN_MS, animMs);
 
-    // Step the index one frame per tick rather than deriving it from elapsed
-    // time: a delayed tick would otherwise skip a frame outright, and every
-    // frame in the sheet has to be shown.
+    // Advance jumpscare frame index.
     let frameIdx = 0;
     if (jumpscare) jumpscare.src = anim[0];
 
@@ -1063,10 +989,7 @@ function triggerJumpscare(reason) {
     }, totalDurationMs);
 }
 
-/* ----------------------------- Golden Freddy ------------------------------ */
-/* The server owns his timer; this side just shows the sprite, yanks the monitor
-   down, and — if the 4 seconds run out — plays a scare that skips the whole
-   static / Game Over tail every other animatronic gets. */
+// Golden Freddy office appearance and jumpscare handlers.
 
 let goldenJumpscareTimeout = null;
 
@@ -1075,17 +998,13 @@ function getGoldenFreddyEl() {
 }
 
 function showGoldenFreddy() {
-    // The laugh goes first and lands on the same frame he does. It is warmed at
-    // startup (see the ensureAudio list at the end of this file) — created cold
-    // here, the element would spend its first play fetching and the giggle would
-    // trail the sprite by a beat.
+    // Play Golden Freddy laugh and display sprite.
     playSound('goldenLaugh');
 
     const el = getGoldenFreddyEl();
     if (el) el.style.display = 'block';
 
-    // He appears *because* the player was on the cameras, so the monitor has to
-    // come down before he is visible at all.
+    // Force camera down when Golden Freddy appears.
     if (isCameraUp || cameraAnimating) {
         forceCloseCamera();
     }
@@ -1134,8 +1053,7 @@ function triggerGoldenFreddyJumpscare() {
         jumpscare.style.zIndex = '1000';
     }
 
-    // One frame held for two seconds, then straight back to the menu — no death
-    // static, no Game Over screen.
+    // Return to menu after Golden Freddy jumpscare.
     goldenJumpscareTimeout = setTimeout(() => {
         goldenJumpscareTimeout = null;
         if (jumpscare) jumpscare.style.display = 'none';
@@ -1163,9 +1081,7 @@ function afterWin(ms, fn) {
     winSequenceTimeouts.push(setTimeout(fn, ms));
 }
 
-/* Nights 5, 6 and 7 each finish on their own plate, held under the music box
-   until it ends or the player clicks. Earlier nights roll straight on to the
-   next night instead. */
+// End card textures by night.
 const END_CARDS = {
     5: { img: 'textures/end game/5th.png', star: 0 },
     6: { img: 'textures/end game/6th.png', star: 1 },
@@ -1227,8 +1143,7 @@ function showEndCard(night, callback) {
     screen.addEventListener('click', finish);
 }
 
-// How far the "6" sits below the "5" before the clock rolls, as a share of the
-// digit's own height. >100% leaves clear air between them mid-roll.
+// 6 AM win sequence animation configuration.
 const WIN_DIGIT_GAP = 165;
 const WIN_ROLL_MS = 2200;
 const WIN_HOLD_BEFORE_ROLL_MS = 1200;
@@ -1273,8 +1188,7 @@ function triggerWinSequence(callback) {
     winScreen.classList.add('visible');
     playSound('win');
 
-    // The scene runs exactly as long as win.mp3 does. The chime's length is only
-    // known once metadata has loaded, so fall back to a fixed hold if it hasn't.
+    // Win audio duration calculation.
     const chime = ensureAudio('win');
     const chimeMs = chime && isFinite(chime.duration) && chime.duration > 0
         ? chime.duration * 1000
@@ -1423,9 +1337,7 @@ const cameraAnimFrames = [
     'textures/camera/office cam/11.png'
 ];
 
-// The backdrop behind the feed is just black. (It used to be stretched from
-// `cam assets/<cam>.png`, which are the 31x25 map labels — blown up to 1280x720
-// they flashed as a blurry smear during the flip-up before the plate decoded.)
+// Apply black background behind camera feed.
 function applyCameraBackground() {
     cameraOverlay.style.backgroundImage = 'none';
     cameraOverlay.style.backgroundColor = '#000';
@@ -1464,17 +1376,11 @@ function playCamGlitch() {
     }, 50);
 }
 
-/* ------------------- Freddy's music box (Kitchen, CAM 06) -------------------
-   Clear when you're watching the kitchen, and barely-there through the office
-   wall otherwise. The muffling is a real lowpass rather than just a low volume,
-   which needs the element routed through Web Audio; if that isn't available the
-   mix falls back to volume alone. */
+// Kitchen Web Audio lowpass filter chain for Freddy music box.
 const KITCHEN_MUSIC_ON_CAM = { gain: 0.55, cutoffHz: 18000 };
 const KITCHEN_MUSIC_MUFFLED = { gain: 0.09, cutoffHz: 380 };
 
-/* One context for the page. Browsers cap how many a document may open, and both
-   kitchen sources want the same one. `false` means Web Audio isn't available at
-   all, which every caller reads as "fall back to plain volume". */
+// Shared Web Audio context.
 let sharedAudioCtx = null;
 
 function getAudioContext() {
@@ -1489,8 +1395,7 @@ function getAudioContext() {
     return sharedAudioCtx;
 }
 
-// element -> lowpass -> gain -> speakers. Returns false if the routing can't be
-// built, in which case the caller drives `el.volume` directly instead.
+// Creates Biquad lowpass filter Web Audio chain.
 function buildFilteredChain(el) {
     const ctx = getAudioContext();
     if (!ctx) return false;
@@ -1572,9 +1477,7 @@ function updateFreddyMusicBox(state) {
     startKitchenMusic(isCameraUp && selectedCamera === '6');
 }
 
-/* --------------------- Foxy's tune inside Pirate Cove ----------------------
-   One chance in five every 30 seconds, and only while you're actually watching
-   CAM 1C with Foxy still behind the curtain. */
+// Foxy Pirate Cove humming audio rolls.
 const PIRATE_SONG_INTERVAL_MS = 30000;
 const PIRATE_SONG_CHANCE = 0.2;
 let pirateSongTimer = null;
@@ -1602,13 +1505,7 @@ function stopPirateSongRolls() {
     stopSound('pirateSong');
 }
 
-/* ------------------- Chica in the Kitchen (CAM 06) -------------------------
-   The same rule as Freddy's music box: clear while you're watching CAM 06, and
-   quiet and muffled through the office wall otherwise. Where Freddy loops one
-   clip, Chica's kitchen is four oven clips picked at random with a short pause
-   between them, so it reads as someone banging around in there rather than a
-   single clang. They share one element so the Web Audio routing survives the
-   src swap — a MediaElementSource binds to the element, not to the file. */
+// Chica kitchen oven sound Web Audio chain.
 const CHICA_KITCHEN_ON_CAM = { gain: 0.55, cutoffHz: 18000 };
 const CHICA_KITCHEN_MUFFLED = { gain: 0.09, cutoffHz: 380 };
 
@@ -1823,8 +1720,7 @@ function closeCamera() {
     }, 20);
 }
 
-// Flip the monitor down visually without telling the server — used when the
-// power cutting out yanks the camera from the player's hands.
+// Visually flip monitor down.
 function playCameraFlipDown(onDone) {
     isFoxySprinting = false;
     if (foxyRunInterval) {
@@ -2023,19 +1919,7 @@ function onServerState(state) {
             playSound(randLaugh);
         }
 
-        /* The feed only cuts out when Bonnie or Chica move, and only on the
-           camera being watched at that moment.
-
-           It used to fire on any of the four moving, anywhere, whether or not
-           the monitor was even up. On a busy night that is four clocks between
-           3 and 5 seconds against a 5-second blackout, so the picture was
-           static more often than not and the cameras stopped being usable.
-           Freddy and Foxy no longer touch it: he has his laugh and Foxy has the
-           cove, neither of which needs the screen to break.
-
-           Either end of the move counts — she vanished from the room being
-           watched, or she walked into it. Both are the picture changing under
-           the player, which is what the static is for. */
+        // Camera static trigger on Bonnie or Chica movement.
         if (state.cameraUp) {
             const disturbed = ['bonnie', 'chica'].some(name => {
                 const from = prevAnimLocations[name];
@@ -2248,10 +2132,7 @@ function triggerCameraBlackout() {
     }, 5000);
 }
 
-/* Freddy's countdown in the dark, for phases 2 and 3 alike. Normally a 20% roll
-   on every tick with a 20-second cap. Unlucky (6) takes the very first tick;
-   Super Lucky (7) always runs the full 20 seconds. Phase 1 is left random —
-   only phases 2 and 3 were specified. */
+// Outage phase advance logic (Unlucky / Super Lucky / random).
 const OUTAGE_PHASE_CAP_SEC = 20;
 
 function shouldAdvanceOutagePhase(elapsedSec) {
@@ -2433,19 +2314,7 @@ function setSavedNight(night) {
     localStorage.setItem('fnaf_saved_night', night.toString());
 }
 
-/* Independent stars, each in a fixed slot on the menu. They are separate flags
-   rather than a count so a later clear can't imply an earlier one, and so each
-   lands in its own slot.
-
-   0 — cleared night 5          3 — Golden Freddy cheat
-   1 — cleared the 6th night    4 — Power Loss cheat
-   2 — cleared the 7th night    5 — Insta Bonnie Chica cheat
-                                6 — Unlucky cheat
-                                7 — Real Time cheat
-                                8 — Speed cheat
-
-   Slots 3-8 are earned only by clearing Night 7 at 4/20 with that cheat on; see
-   awardCheatStars. The starIndex values live in cheats.js. */
+// Earned menu star keys and corresponding CSS styles.
 const STAR_KEYS = [
     'fnaf_star_night5', 'fnaf_star_night6', 'fnaf_star_night7',
     'fnaf_star_golden', 'fnaf_star_powerloss', 'fnaf_star_instabc',
@@ -2467,9 +2336,7 @@ function hasStar(index) {
     return localStorage.getItem(STAR_KEYS[index]) === '1';
 }
 
-/* The single gate for every star in the game. Putting it here rather than at the
-   call sites is what makes "cheats that forfeit the night 5/6/7 stars also
-   forfeit the cheat stars" fall out for free — nothing can write a star past it. */
+// Award star if no star-blocking cheat is active.
 function awardStar(index) {
     if (typeof anyStarBlockingCheatOn === 'function' && anyStarBlockingCheatOn()) return;
     if (STAR_KEYS[index]) localStorage.setItem(STAR_KEYS[index], '1');
@@ -2482,8 +2349,7 @@ function isFourTwentyRun() {
     return ['freddy', 'bonnie', 'chica', 'foxy'].every(name => ai[name] === 20);
 }
 
-// Called on a Night 7 win. awardStar still has the final say, so a run with a
-// blocking cheat on writes nothing here either.
+// Award Night 7 4/20 cheat stars.
 function awardCheatStars(night) {
     if (night !== 7 || !isFourTwentyRun()) return;
     if (typeof activeStarGrantingCheats !== 'function') return;
@@ -2536,8 +2402,7 @@ function startMenuEffects() {
         }, delay);
     }
 
-    // The menu portrait sits lit most of the time and drops out for a frame or
-    // two now and then. A constant strobe reads as a broken page, not as FNAF.
+    // Main menu background twitch & flicker timers.
     function scheduleNextFlicker() {
         if (mainMenu.style.display === 'none') return;
         const delay = Math.floor(Math.random() * 900) + 250;
@@ -2579,10 +2444,7 @@ function renderMainMenu() {
     if (btnNight6) btnNight6.style.visibility = isNight6Unlocked() ? 'visible' : 'hidden';
     if (btnCustomNight) btnCustomNight.style.display = 'flex'; // always available
 
-    /* The original three keep fixed slots, so an unearned one leaves a gap and
-       the others don't shuffle. The six cheat stars are appended only once
-       earned — reserving empty slots for them would leave a permanent run of
-       blank space under the title for anyone who never touches the cheats. */
+    // Render earned menu stars and cheat stars.
     const starsContainer = document.getElementById('starsContainer');
     if (starsContainer) {
         starsContainer.innerHTML = '';
@@ -2636,8 +2498,7 @@ document.getElementById('chicaPlus')?.addEventListener('click', () => adjustCust
 document.getElementById('foxyMinus')?.addEventListener('click', () => adjustCustomAI('foxy', -1));
 document.getElementById('foxyPlus')?.addEventListener('click', () => adjustCustomAI('foxy', 1));
 
-/* 1/9/8/7 on the four sliders spells the year on the posters. Setting it and
-   hitting READY doesn't start a shift — Golden Freddy answers instead. */
+// Golden Freddy Easter Egg code check (1/9/8/7).
 const GOLDEN_FREDDY_CODE = { freddy: 1, bonnie: 9, chica: 8, foxy: 7 };
 
 function isGoldenFreddyCode(levels) {
@@ -2666,9 +2527,6 @@ document.getElementById('btnBackCustom')?.addEventListener('click', () => {
     showMainMenu();
 });
 
-/* ------------------------------ Cheats menu -------------------------------
-   Rows are built from the CHEATS array in cheats.js rather than written out in
-   index.html, so a cheat is added in exactly one place. */
 const CHEATS_HINT_IDLE = 'Hover a cheat for what it does.';
 
 function setCheatsHint(text) {
@@ -2676,17 +2534,7 @@ function setCheatsHint(text) {
     if (hint) hint.textContent = text || CHEATS_HINT_IDLE;
 }
 
-/* One row per cheat: number, name, the star it pays out, and its state. The
-   description lives in the shared line under the list rather than under every
-   row — ten labels read as a menu, ten labels each with their own paragraph of
-   small print read as a settings page, and this screen sits next to Custom
-   Night, which is plain centred text on black.
-
-   Kept in the original 1-10 order. That is the numbering the cheats were
-   specified in and the one to reach for when talking about them, and the star
-   swatch already shows at a glance which of them forfeit stars and which pay
-   one out — so regrouping would cost the familiar order to restate something
-   the row already says. */
+// Builds a cheat menu row element.
 function buildCheatRow(cheat) {
     const on = isCheatOn(cheat.id);
     const locked = isCheatLocked(cheat.id);
@@ -2720,7 +2568,7 @@ function buildCheatRow(cheat) {
     toggle.textContent = locked ? 'LOCKED' : (on ? 'ON' : 'OFF');
     row.appendChild(toggle);
 
-    // Say *why* a locked cheat won't turn on rather than just grEying it out.
+    // Display cheat hint description or lock rationale.
     const hint = locked
         ? 'Locked while ' + getCheat(cheat.mutex).name + ' is on.'
         : cheat.desc;
@@ -2775,7 +2623,7 @@ document.getElementById('btnBackCheats')?.addEventListener('click', () => {
 const selectorArrow = document.getElementById('selectorArrow');
 document.querySelectorAll('.menu-item').forEach(item => {
     item.addEventListener('mouseenter', () => {
-        // A locked 6th Night still occupies its slot, so check visibility too.
+        // Hover selector arrow positioning.
         if (item.style.display === 'none' || item.style.visibility === 'hidden') return;
         // Reveal the "Night n" subhead from the same event that drives the
         // arrow, so the two can never disagree.
@@ -2802,8 +2650,7 @@ document.querySelectorAll('.menu-item').forEach(item => {
     });
 });
 
-// Coming back from the Custom Night screen must not restart the menu music —
-// that screen never stopped it, so only start it when it isn't already running.
+// Start main menu audio.
 function startMenuMusic() {
     const ambience = ensureAudio('menuAmbience');
     if (ambience && !ambience.paused && !ambience.ended) return;
@@ -2932,10 +2779,7 @@ function startGame(night, customAI = null) {
     if (typeof AIBot !== 'undefined') AIBot.stop();
     canToggleCamera = true;
     currentNight = night;
-    /* Drop the finished run's state. joinGame is a socket round trip, so without
-       this there is a window where the new night is underway while currentState
-       still describes the last one — and anything reading it, the AI bot most of
-       all, acts on positions and AI levels that belong to a different shift. */
+    // Reset state and start night.
     currentState = null;
     // Snapshot both, so nothing edited on a menu mid-run can change this night.
     currentCustomAI = customAI ? { ...customAI } : null;
@@ -3034,12 +2878,10 @@ document.getElementById('btnCustomNight')?.addEventListener('click', () => {
 
 initTextPlates();
 
-// Warm the clips whose *duration* drives timing, so it is known by the time a
-// night is actually cleared rather than NaN on first use.
+// Warm audio clips.
 ['win', 'musicBox', 'kitchenMusicBox', 'pirateSong'].forEach(ensureAudio);
 
-// Golden Freddy's two cues are warmed for latency, not duration: both have to be
-// audible on the exact frame they are asked for, with no fetch in between.
+// Warm Golden Freddy audio cues.
 ['goldenLaugh', 'jumpscare2'].forEach(ensureAudio);
 
 // Seed the HUD so it is drawn before the first server state arrives.
@@ -3048,18 +2890,6 @@ drawPixelText(document.getElementById('powerDisplay'), 'Power left: 100%');
 drawPixelText(document.getElementById('timeDisplay'), '12 AM');
 drawPixelText(document.getElementById('nightDisplay'), 'Night 1');
 
-if (document.fonts && document.fonts.ready) {
-    document.fonts.ready.then(() => {
-        ['usageLabel', 'powerDisplay', 'timeDisplay', 'nightDisplay'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) delete el.dataset.pixelText;
-        });
-        drawPixelText(document.getElementById('usageLabel'), 'Usage:');
-        drawPixelText(document.getElementById('powerDisplay'), 'Power left: ' + (gameState ? gameState.power : 100) + '%');
-        drawPixelText(document.getElementById('timeDisplay'), (gameState && gameState.hour ? (gameState.hour === 0 ? 12 : gameState.hour) : 12) + ' AM');
-        drawPixelText(document.getElementById('nightDisplay'), 'Night ' + currentNight);
-    });
-}
 
 window.addEventListener('load', () => {
     showMainMenu();

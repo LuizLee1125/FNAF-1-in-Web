@@ -1,15 +1,4 @@
-/* ------------------------------- Cheats -----------------------------------
-   Pure state: the registry, its persistence, and the two rules that fall out of
-   it (mutually exclusive pairs, and which cheats forfeit stars). No DOM and no
-   game bindings, so this loads before client.js and script.js and both can read
-   it.
-
-   The menu UI lives in script.js with the other menus; the mechanics live on the
-   server, which receives the enabled list at joinGame and stores it on the room.
-
-   `starIndex` is a slot in STAR_KEYS (script.js). Slots 0-2 are the original
-   three; 3-8 are the cheat stars, each earned only by clearing Night 7 at 4/20
-   with that cheat on.                                                        */
+// Cheats registry, local persistence, and star-blocking rules.
 
 const CHEATS = [
     {
@@ -66,16 +55,10 @@ const CHEATS = [
 
 const CHEAT_STORAGE_KEY = 'fnaf_cheats';
 
-/* The AI Mode bot has no strength setting. It sizes itself to the shift at hand
-   — the night, the Custom Night sliders, and whichever cheats are on — in
-   planFor() in aibot.js. See §6c of system_architecture.md. */
-
 function loadCheats() {
     try {
         const raw = JSON.parse(localStorage.getItem(CHEAT_STORAGE_KEY) || '[]');
         if (!Array.isArray(raw)) return new Set();
-        // Drop anything that isn't a live cheat id, so a renamed cheat can't
-        // resurrect itself out of an old save.
         return new Set(raw.filter(id => CHEATS.some(c => c.id === id)));
     } catch (err) {
         return new Set();
@@ -87,9 +70,7 @@ let enabledCheats = loadCheats();
 function saveCheats() {
     try {
         localStorage.setItem(CHEAT_STORAGE_KEY, JSON.stringify([...enabledCheats]));
-    } catch (err) {
-        /* Private mode / full quota — the toggles just don't survive the reload. */
-    }
+    } catch (err) { }
 }
 
 function getCheat(id) {
@@ -104,8 +85,7 @@ function getEnabledCheats() {
     return [...enabledCheats];
 }
 
-// A cheat is locked, not auto-swapped, while its partner is on: the player has to
-// turn the other one off first.
+// Checks if cheat is mutually exclusive with an already enabled cheat.
 function isCheatLocked(id) {
     const cheat = getCheat(id);
     return !!(cheat && cheat.mutex && enabledCheats.has(cheat.mutex));
@@ -126,9 +106,7 @@ function toggleCheat(id) {
     return setCheat(id, !isCheatOn(id));
 }
 
-/* One rule covers both halves of the requirement: any of these being on forfeits
-   the night 5/6/7 stars *and* the cheat stars, since awardStar is the only way
-   any star is ever written. */
+// Checks if any active cheat forfeits star progression.
 function anyStarBlockingCheatOn() {
     return CHEATS.some(c => c.blocksStars && enabledCheats.has(c.id));
 }

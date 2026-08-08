@@ -14,27 +14,11 @@ app.use(express.static(path.join(__dirname, '../frontend')));
 const TICK_MS = 100;
 const TOTAL_HOURS = 6;
 
-/* Night length and power drain, tuned toward FNAF 1 rather than toward being
-   comfortable.
-
-   80s per in-game hour makes a shift 8 minutes. POWER_DRAIN_BASE is per usage
-   bar per second, so a dark office at usage 1 loses 1% every 9.6s and a fully
-   lit one at usage 5 loses 1% every 1.9s — the rates the original is commonly
-   documented at.
-
-   The two compound, which is the point: the night is a third longer *and* the
-   meter runs ~15% faster, so simply sitting still now costs about 50% of the
-   power where it used to cost 32%. Doors are no longer nearly free. */
+// Night length (80s/hr) and base power drain.
 const HOUR_LENGTH_MS = 80000;
 const POWER_DRAIN_BASE = 0.104;
 
-// Movement opportunity intervals from the original game — each animatronic rolls
-// 1-20 on its own clock and fails the move if the roll exceeds its AI level.
-// Source: Technical-FNAF wiki, "Movement Opportunities (Fnaf 1)".
-// `cameraStall` means "the monitor being up blocks every move, anywhere on the
-// map". Only Foxy works that way. Freddy's stall is conditional — it applies at
-// the 4B corner only, and keys off the selected camera rather than the monitor —
-// so it lives in attemptMove instead of here.
+// Animatronic movement intervals and camera stall rules.
 const MOVEMENT_CONFIG = {
   freddy: { intervalMs: 3020, cameraStall: false },
   bonnie: { intervalMs: 4970, cameraStall: false },
@@ -42,49 +26,15 @@ const MOVEMENT_CONFIG = {
   foxy: { intervalMs: 5010, cameraStall: true }
 };
 
-// Golden Freddy doesn't walk the room graph at all. He rolls only while the
-// monitor is up, and a hit drops him straight into the office.
+// Golden Freddy rolls while monitor is up.
 const GOLDEN_ROLL_INTERVAL_MS = 2000;
 const GOLDEN_ROLL_DENOMINATOR = 200;
 const GOLDEN_OFFICE_DURATION_MS = 4000;
-// Counted from the moment he enters, so it covers his 4s in the office and keeps
-// running after he's waved off. Without it "flip up, he leaves, flip up again"
-// can land a second appearance immediately.
 const GOLDEN_RESPAWN_COOLDOWN_MS = 30000;
 
-/* ------------------------------- Cheats -----------------------------------
-   The enabled list arrives with joinGame and is frozen onto the room, so a run
-   keeps the cheats it started with even if the player edits the menu mid-night.
-
-   Two clock multipliers come out of it and are read everywhere a timer is set:
-
-     timeScale  Real Time (8). Stretches the *night* — the hour length and, in
-                inverse, the power drain. 60 real minutes per in-game hour.
-     speedMult  Speed (9). Halves animatronic movement intervals only; it must
-                not touch the power drain.
-     clockMult  The product. Everything that is an animatronic opportunity clock
-                scales by this.
-
-   The line drawn throughout: opportunity clocks scale, player reaction windows
-   never do. Stretching Golden Freddy's 4s in the office, or Foxy's door-close
-   window, to four minutes would retire both threats outright.               */
-/* 45, not 60: Real Time means one real hour per in-game hour, and the base hour
-   is now 80s rather than 60s. 80 * 45 = 3600s. If HOUR_LENGTH_MS changes, this
-   has to change with it, and so does the matching constant in aibot.js. */
+// Cheat multipliers and Real Time drain relief.
 const REAL_TIME_SCALE = 3600000 / HOUR_LENGTH_MS;
 const SPEED_MULTIPLIER = 0.5;
-
-/* Real Time is deliberately *not* a straight 1:1 rescale of the meter.
-
-   Everything on the server slows by the same factor, so in principle the same
-   share of the power gets used. But that assumes the player slows down too, and
-   a person does not check a door once every five minutes — they check at human
-   speed, which burns far more per in-game hour than the scaling accounts for.
-   Animatronics also sit at a door for minutes at a time, so the door is
-   genuinely shut for longer.
-
-   This hands some of that back. Deliberately partial: a six-hour shift should
-   still be a test of power management, not a formality. */
 const REAL_TIME_DRAIN_RELIEF = 1.35;
 
 const GOLDEN_CHEAT_AI = 50;
@@ -92,16 +42,11 @@ const GOLDEN_CHEAT_DENOMINATOR = 1000;
 const GOLDEN_CHEAT_ROLL_INTERVAL_MS = 500;
 const GOLDEN_CHEAT_COOLDOWN_MS = 5000;
 
-// Foxy's window from the sprint starting to the left door having to be shut.
-// A reaction window, so Real Time leaves it alone.
+// Foxy sprint reaction window (3s) and idle wait (30s).
 const FOXY_SPRINT_WINDOW_MS = 3000;
-// How long he waits at an empty cove before running on his own.
 const FOXY_SPRINT_WAIT_MS = 30000;
 
-// Hop counts to the office door, used by Unlucky (6) and Super Lucky (7) to
-// replace the random pick with the nearest / furthest neighbour. Derived from
-// MOVEMENT_GRAPH; the door itself is 0 so Super Lucky never chooses it when it
-// has any alternative.
+// Distance from office door for pathing rolls (Unlucky / Super Lucky).
 const OFFICE_DISTANCE = {
   bonnie: { office_door_left: 0, '2B': 1, '2A': 2, '3': 2, '1B': 3, '5': 3, '1A': 4 },
   chica: { office_door_right: 0, '4B': 1, '4A': 2, '6': 3, '7': 3, '1B': 3, '1A': 4 }
@@ -120,9 +65,7 @@ function rollFoxyStallMs(room) {
   return Math.floor(seconds * 1000 * room.clockMult);
 }
 
-// A flat value per hour rather than the sparse `{hour, ...}` shape AI_SCHEDULES
-// uses — nights 3 and 4 change every single hour, so the sparse form would just
-// be six entries anyway. Index 0 is 12 AM.
+// Golden Freddy AI level by night & hour.
 const GOLDEN_FREDDY_AI = {
   1: [0, 0, 0, 0, 0, 1],
   2: [0, 0, 0, 0, 1, 1],
@@ -205,13 +148,7 @@ const AI_SCHEDULES = {
 const rooms = new Map();
 const roomIntervals = new Map();
 
-/* Power Loss (4) starts the ramp near its top instead of walking up from 1%.
-
-   It used to jump straight to a flat 21% on the first knock. Against the
-   current drain that left no survivable line at all — an 8-minute 4/20 night
-   costs roughly 77% of the meter before a single knock, so an 80% start plus
-   one 21% knock is already over. Starting at 11% and climbing keeps the cheat
-   punishing without making it arithmetic-proof. */
+// Foxy door knock power drain percentage.
 function getFoxyKnockDrain(knockCount, room) {
   if (hasCheat(room, 'powerLoss')) {
     if (knockCount <= 1) return 11;
@@ -233,8 +170,7 @@ function createRoom(roomId, night, customAI, cheats) {
   const timeScale = cheatSet.has('realTime') ? REAL_TIME_SCALE : 1;
   const speedMult = cheatSet.has('speed') ? SPEED_MULTIPLIER : 1;
 
-  // Insta Bonnie Chica (5) drops them straight at the hall corners. Freddy is
-  // held on stage until both leave 1A, so this also frees him from the off.
+  // Insta Bonnie Chica cheat initialization.
   const instaBC = cheatSet.has('instaBonnieChica');
 
   return {
@@ -245,9 +181,7 @@ function createRoom(roomId, night, customAI, cheats) {
     timeScale,
     speedMult,
     clockMult: timeScale * speedMult,
-    // Power is divided by this, not by timeScale alone — see the note on
-    // REAL_TIME_DRAIN_RELIEF. Speed must never appear here: it changes how fast
-    // animatronics move, not how fast the building burns electricity.
+    // Power drain divisor calculation.
     drainDivisor: timeScale * (cheatSet.has('realTime') ? REAL_TIME_DRAIN_RELIEF : 1),
     state: 'waiting',
     hour: 0,
@@ -316,20 +250,10 @@ function attemptMove(room, name) {
     return;
   }
 
-  /* Freddy's camera stall. He fails every movement opportunity for as long as
-     the *selected* camera is the room he is currently standing in — not just at
-     the 4B corner, which is where this used to be pinned.
-
-     Two things make it his own mechanic rather than Foxy's. It keys off which
-     camera is selected rather than off `cameraUp`, so it holds after the
-     monitor comes down; and it only applies to the room he is actually in, so
-     watching anywhere else does nothing for you. Camping CAM 4B still works
-     exactly as before — 4B is simply one of the rooms he passes through. */
+  // Freddy camera stall: fails move when selected camera matches his current room.
   if (name === 'freddy' && room.selectedCamera === state.location) return;
 
-  // Unlucky (6) skips the roll outright — anything with AI left always moves.
-  // Super Lucky (7) fails everything below AI 20; at 20 the move lands, but the
-  // pathing below makes sure it never gets anywhere.
+  // Unlucky / Super Lucky AI movement roll checks.
   if (hasCheat(room, 'superLucky')) {
     if (state.ai < 20) return;
   } else if (!hasCheat(room, 'unlucky')) {
@@ -344,7 +268,7 @@ function attemptMove(room, name) {
     }
   }
 
-  // Foxy stage mechanics: Stage 0 (Cove closed) -> Stage 1 (Peeking) -> Stage 2 (Outside) -> Stage 3 (Empty cove)
+  // Foxy stage progression (0 to 3).
   if (name === 'foxy') {
     if (state.foxyStage < 3) {
       state.foxyStage++;
@@ -358,13 +282,7 @@ function attemptMove(room, name) {
     return;
   }
 
-  /* Freddy at the 4B corner — his last room before the office, so the right
-     door decides where he goes: open lets him in, closed sends him back to 4A.
-
-     Camping CAM 4B still freezes him here, but that is now the general stall
-     above rather than a rule of its own. It is deliberately checked before this
-     block, so a closed right door does not push him back to 4A while the player
-     is still sitting on 4B. */
+  // Freddy at 4B corner: right door open -> office, closed -> 4A.
   if (name === 'freddy' && state.location === '4B') {
     if (room.doors.right) {
       state.location = '4A'; // Retreat — the right door is shut
@@ -412,17 +330,13 @@ function attemptMove(room, name) {
   }
 }
 
-// Where a blocked door sends them back to. Insta Bonnie Chica (5) keeps them in
-// the halls instead of dropping them back to the Dining Area, which is also what
-// gives Super Lucky a loop to sit in when both cheats are on: 2B -> door -> 2A
-// -> 2B, with the door bounce below never letting them in.
+// Door retreat room for Bonnie and Chica.
 function getDoorRetreat(room, name) {
   if (!hasCheat(room, 'instaBonnieChica')) return '1B';
   return name === 'bonnie' ? '2A' : '4A';
 }
 
-// Random neighbour normally. Unlucky (6) takes the shortest way to the office;
-// Super Lucky (7) takes the longest, which keeps Bonnie and Chica circling.
+// Movement pathing decision (random, or Unlucky / Super Lucky distance bias).
 function chooseMove(room, name, moves) {
   if (!moves.length) return undefined;
   if (moves.length === 1) return moves[0];
@@ -442,13 +356,8 @@ function chooseMove(room, name, moves) {
   return moves[Math.floor(Math.random() * moves.length)];
 }
 
-// Any path that removes power has to run through here. Foxy's door knock used
-// to subtract directly, so a knock that emptied the meter left the room sitting
-// at 0% forever: the tick only checks for the outage inside `if (power > 0)`,
-// so `gameEnd/powerOut` was never emitted and the night simply froze.
+// Power drain handler.
 function drainPower(roomId, room, amount) {
-  // Unlimited Power (2) sits here rather than at the call sites so it also
-  // covers Foxy's knock, which routes through this same function.
   if (hasCheat(room, 'unlimitedPower')) return;
   room.power = Math.max(0, room.power - amount);
   checkPowerOut(roomId, room);
@@ -465,8 +374,7 @@ function checkPowerOut(roomId, room) {
   room.cameraUp = false;
   room.usage = 1;
   room.powerOutTriggered = true;
-  // A blackout retires him — otherwise his countdown keeps running underneath
-  // the outage sequence and lands a scare the player can no longer answer.
+  // Clear Golden Freddy on power outage.
   clearGoldenFreddy(room);
 
   io.to(roomId).emit('stateUpdate', getRoomStatePayload(room));
@@ -483,11 +391,8 @@ function getRoomStatePayload(room) {
     lights: room.lights,
     jammed: room.jammed || { left: false, right: false },
     cameraUp: room.cameraUp,
-    // Freddy's 4B stall keys off this rather than off `cameraUp`, so it has to be
-    // visible client-side to be debuggable at all.
     selectedCamera: room.selectedCamera,
-    // The run's frozen cheat list. The client reads this rather than its own
-    // localStorage mid-night, so editing the menu can't change a run in flight.
+    // Active run cheats list.
     cheats: room.cheats ? [...room.cheats] : []
   };
 }
@@ -522,8 +427,7 @@ function gameTick(roomId) {
       getGoldenFreddyAI(room.night, room.hour, hasCheat(room, 'goldenFreddy'));
   }
 
-  // Golden Freddy. Either he is sitting in the office counting down to the
-  // scare, or he is rolling to show up — never both.
+  // Golden Freddy state tick.
   const golden = room.animatronics.goldenFreddy;
   if (golden.cooldownMs > 0) {
     golden.cooldownMs = Math.max(0, golden.cooldownMs - deltaMs);
@@ -539,12 +443,10 @@ function gameTick(roomId) {
       return;
     }
   } else if (!room.cameraUp) {
-    // Only camera-up time counts, so every fresh flip-up gets a clean 2s before
-    // its first roll rather than inheriting a nearly-full timer.
+    // Reset roll timer when monitor is down.
     golden.rollTimerMs = 0;
   } else if (golden.cooldownMs <= 0 && golden.ai > 0 && room.power > 0 && !room.animatronics.freddy.inOffice) {
-    // Freddy in the office makes any action fatal, and the appearance force-closes
-    // the monitor — rolling here would kill the player under the wrong name.
+    // Golden Freddy roll eligibility check.
     const goldenCheat = hasCheat(room, 'goldenFreddy');
     const rollIntervalMs =
       (goldenCheat ? GOLDEN_CHEAT_ROLL_INTERVAL_MS : GOLDEN_ROLL_INTERVAL_MS) * room.clockMult;
@@ -553,8 +455,7 @@ function gameTick(roomId) {
     if (golden.rollTimerMs >= rollIntervalMs) {
       golden.rollTimerMs -= rollIntervalMs;
 
-      // He is exempt from Super Lucky's "AI 20 still moves" clause — the spec
-      // has him fail outright — and included in Unlucky's guaranteed move.
+      // Golden Freddy roll odds (Super Lucky / Unlucky).
       const denominator = goldenCheat ? GOLDEN_CHEAT_DENOMINATOR : GOLDEN_ROLL_DENOMINATOR;
       let hit;
       if (hasCheat(room, 'superLucky')) hit = false;
@@ -717,7 +618,7 @@ io.on('connection', (socket) => {
     const room = rooms.get(socket.roomId);
     if (!room || room.state !== 'playing' || room.power <= 0) return;
 
-    // Freddy office jumpscare condition 5.1 & 5.2:
+    // Freddy in-office jumpscare trigger.
     if (room.animatronics.freddy.inOffice) {
       if (['toggleDoor', 'toggleLight', 'toggleCamera', 'setCamera', 'selectCamera'].includes(action.type)) {
         room.state = 'gameover';
@@ -759,7 +660,7 @@ io.on('connection', (socket) => {
         newCameraUp = !!action.value;
       }
 
-      // Bonnie & Chica jumpscare condition 4
+      // Bonnie & Chica in-office jumpscare trigger.
       for (const name of ['bonnie', 'chica']) {
         const anim = room.animatronics[name];
         if (anim.inOffice) {
@@ -798,8 +699,7 @@ io.on('connection', (socket) => {
     io.to(socket.roomId).emit('stateUpdate', getRoomStatePayload(room));
   });
 
-  // The power-outage jumpscare is resolved on the client, so it has to tell us
-  // the run is over — otherwise the room keeps counting up to a 6 AM win.
+  // Client player death notification.
   socket.on('playerDied', () => {
     const room = rooms.get(socket.roomId);
     if (!room || room.state !== 'playing') return;

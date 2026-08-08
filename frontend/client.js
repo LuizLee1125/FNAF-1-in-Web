@@ -3,9 +3,6 @@
 const socket = io();
 
 let gameActive = false;
-// Sticky for the whole run, unlike gameActive which stateUpdate keeps flipping
-// back on. Without it the room kept ticking after a death and the 6 AM win
-// arrived minutes later — on the main menu.
 let runEnded = false;
 let lightState = { left: false, right: false };
 let jammedState = { left: false, right: false };
@@ -14,8 +11,7 @@ socket.on('connect', () => {
   console.log('Connected to FNAF Backend');
 });
 
-// Called by script.js the moment the player is jumpscared, including the
-// power-outage scare, which the server has no way of knowing about.
+// Called on jumpscare to notify server and end run.
 function endRun() {
   if (runEnded) return;
   runEnded = true;
@@ -62,8 +58,6 @@ socket.on('gameEnd', (data) => {
     if (typeof stopPowerOutageSequence === 'function') {
       stopPowerOutageSequence();
     }
-    // triggerWinSequence hands off to finishNight, which either rolls straight
-    // into the next night or stops on the end card — so no callback here.
     if (typeof triggerWinSequence === 'function') {
       triggerWinSequence();
     } else if (typeof returnToMainMenu === 'function') {
@@ -81,8 +75,6 @@ socket.on('gameEnd', (data) => {
 socket.on('gameOver', (data) => {
   if (runEnded) return;
   endRun();
-  // Golden Freddy has his own scare: one frame, XSCREAM2, then the menu — none
-  // of the static / Game Over tail the others run through.
   if (data.reason === 'goldenFreddy' && typeof triggerGoldenFreddyJumpscare === 'function') {
     triggerGoldenFreddyJumpscare();
   } else if (typeof triggerJumpscare === 'function') {
@@ -165,14 +157,9 @@ function bindButton(button, side) {
 bindButton(leftButton, 'left');
 bindButton(rightButton, 'right');
 
-// `cheats` is the enabled-id list from cheats.js. The server freezes it onto the
-// room, so a run keeps whatever was set when it started.
+// Emit joinGame payload with room settings and active cheats.
 function joinGame(roomId, night = 1, customAI = null, cheats = []) {
   gameActive = false;
   runEnded = false;
   socket.emit('joinGame', { roomId, night, customAI, cheats });
 }
-
-window.addEventListener('load', () => {
-  // joinGame is called from script.js main menu
-});

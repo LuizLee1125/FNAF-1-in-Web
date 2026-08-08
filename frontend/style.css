@@ -1,13 +1,4 @@
-/* ---------------------------------------------------------------------------
-   FNAF 1 web clone — presentation layer.
-
-   Design frame is 1280x720. Office / camera art is 1600x720: it is 320px wider
-   than the frame, and that surplus is exactly the horizontal pan. Never use
-   `cover` on those assets — it re-scales and crops them. See system_architecture.md.
-
-   The original game renders its UI in Consolas at regular weight, with no text
-   shadow and no letter spacing. --fnaf-font is the single source of truth.
---------------------------------------------------------------------------- */
+/* FNAF 1 web clone — presentation layer (1280x720 design frame). */
 
 @font-face {
     font-family: 'Volter';
@@ -38,8 +29,7 @@ body {
     justify-content: center;
 }
 
-/* Letterboxed 16:9 frame. `container-type: size` makes cqw/cqh resolve against
-   this box, so every UI size below is a fraction of the 1280x720 design frame. */
+/* Letterboxed 16:9 frame (scaled via container units). */
 #gameWindow {
     position: relative;
     width: min(100vw, 177.7778vh);
@@ -89,11 +79,7 @@ body {
     width: 15.5%;
 }
 
-/* Golden Freddy sits on the floor dead-centre in the room. The sprite is 541x521
-   against the same 1600x720 office plate the doors are authored to, so it is
-   placed at native scale and centred horizontally. It is then pushed 12% of the
-   frame past the bottom edge so his feet are cut off rather than shown —
-   #gameWindow's overflow:hidden does the clipping. */
+/* Golden Freddy office sprite position & scaling. */
 #goldenFreddy {
     position: absolute;
     left: 33.09%;
@@ -225,9 +211,7 @@ body {
     width: auto;
 }
 
-/* Power / usage / time / night are canvases holding 1-bit pixel text, upscaled
-   with nearest-neighbour so they read as the same blocky bitmap face as
-   "kitchen txt.png". JS sets width/height in cqh so they scale with the frame. */
+/* Live HUD text readouts using the Volter font stack. */
 .pixel-text {
     color: #fff;
     font-family: var(--fnaf-font);
@@ -361,8 +345,7 @@ body {
     z-index: 55;
 }
 
-/* Parked just clear of the red dot's right edge (4.5cqh + 4.5cqh = 9cqh) and
-   centred on it vertically. 4.3cqh is the plate's native height, 31/720. */
+/* Mute call button positioning. */
 #muteCall {
     position: absolute;
     top: 5.1cqh;
@@ -447,8 +430,7 @@ body {
     50% { opacity: 0.3; }
 }
 
-/* cam map.png is square (400x400). The container must stay square or every
-   marker's percentage offset drifts away from the room it labels. */
+/* Square camera map container (48cqh x 48cqh). */
 .camera-map {
     position: absolute;
     bottom: 7cqh;
@@ -468,8 +450,7 @@ body {
     pointer-events: none;
 }
 
-/* Markers are anchored by their centre — see the room-rectangle coordinates
-   decoded from cam map.png (documented in system_architecture.md). */
+/* Camera room markers on map. */
 .camera-position {
     position: absolute;
     width: 11.5%;
@@ -519,8 +500,7 @@ body {
     transition: none;
 }
 
-/* Jumpscare plates are 1600x720; `cover` on the 1280 frame shows the same
-   centred crop the office sits at, so the scare lines up with the room. */
+/* Jumpscare overlay positioning. */
 #jumpscare {
     position: absolute;
     top: 0;
@@ -651,9 +631,7 @@ body {
     margin-left: 2.5cqh;
 }
 
-/* ------------------------------- Main Menu ------------------------------- */
-/* Layout follows the original: title block top-left, earned stars beneath it,
-   options stacked down the left, version bottom-left, copyright bottom-right. */
+/* Main Menu layout. */
 #mainMenu {
     position: absolute;
     top: 0;
@@ -697,8 +675,7 @@ body {
     position: relative;
     z-index: 2;
     display: flex;
-    /* Centred rather than stretched: the rainbow cheat star is deliberately
-       taller than the row and has to overflow evenly above and below. */
+    /* Centred star container alignment. */
     align-items: center;
     gap: 1.1cqh;
     margin-bottom: 4cqh;
@@ -800,10 +777,7 @@ body {
     font-family: var(--fnaf-font);
 }
 
-/* --------------------------- Custom Night Screen -------------------------- */
-/* The original is a flat black sheet: title plate, a row of four portraits with
-   a name plate and an A.I. number under each, the difficulty legend, then READY.
-   No cards, no borders, no rounded corners. */
+/* Custom Night Screen styling. */
 #customNightScreen {
     position: absolute;
     inset: 0;
@@ -930,16 +904,7 @@ body {
     color: #fff;
 }
 
-/* ------------------------------- Cheat stars ------------------------------
-   Slots 0-2 are the original three and stay plain <img src="star.png">.
-   Slots 3-8 are the cheat stars: the same PNG is used as a *mask* instead, so
-   the silhouette is preserved while the fill becomes a flat colour, a colour
-   cycle, or a hue rotation. Anything else (tint filters, recoloured copies of
-   the asset) either loses the shape or needs six more PNGs.
-
-   Deliberately unscoped: the cheats menu paints the same classes onto a small
-   swatch in each row, so a cheat previews the exact star it pays out. Only the
-   sizing stays tied to .star-slot, since that is the only slot-specific part. */
+/* Cheat stars styling (uses star.png as a mask). */
 .cheat-star {
     -webkit-mask-image: url('textures/main menu/star.png');
     mask-image: url('textures/main menu/star.png');
@@ -1020,13 +985,7 @@ body {
     50% { transform: scale(1.28); opacity: 0.55; }
 }
 
-/* ------------------------------ Cheats menu -------------------------------
-   Same flat black sheet as Custom Night: no cards, no borders, no rounded
-   corners. The one departure is that every label here is live text — the
-   game ships no plates for any of this.                                    */
-/* The label plates are cropped tight to their ink, so a 4.6cqh plate is the full
-   ascender-to-descender extent — about a 4.9cqh Consolas size. Matching the box
-   height instead would render this one label visibly smaller than the rest. */
+/* Cheats menu styling. */
 .menu-live-label {
     display: block;
     font-family: var(--fnaf-consolas-font);
@@ -1060,9 +1019,7 @@ body {
     color: #d2d2d2;
 }
 
-/* One centred column, sized so the labels sit in the middle third of the frame
-   the way Custom Night's do. No boxes, no rules, no fills — the surrounding
-   screens are flat text on black and this one has to match them. */
+/* Centred cheats list column. */
 .cheats-list {
     display: flex;
     flex-direction: column;
@@ -1081,8 +1038,7 @@ body {
     transition: color 0.1s ease;
 }
 
-/* The main menu marks its hovered item with ">>" set outside the label. Same
-   idiom here rather than a highlight bar, which nothing else in the game uses. */
+/* Hover indicator prefix for cheat rows. */
 .cheat-row::before {
     content: '>>';
     position: absolute;
@@ -1119,9 +1075,7 @@ body {
     text-overflow: ellipsis;
 }
 
-/* The star this cheat pays out, in its real colour — the same mask classes the
-   main menu uses, so the two can never drift apart. The slot is reserved on
-   every row, star or not, to keep the ON/OFF column straight. */
+/* Cheat star indicator swatch. */
 .cheat-star-mark {
     flex: 0 0 auto;
     width: 2.3cqh;
@@ -1151,8 +1105,7 @@ body {
     color: #cfcfcf;
 }
 
-/* Blocked by its mutually exclusive partner — visibly inert, not hidden, so it
-   is obvious *why* it won't turn on. The reason goes in the hint line. */
+/* Mutually exclusive locked cheat row styling. */
 .cheat-row.is-locked {
     cursor: default;
     color: #3a3a3a;
@@ -1199,12 +1152,7 @@ body {
     text-align: center;
 }
 
-/* --------------------------- Map Hacks (cheat 1) --------------------------
-   The office copy of the map plate. Matches the camera map's box exactly, but
-   is pinned to the frame rather than to #office so it holds the corner while
-   the room pans. z-index sits under #cameraOverlay (50) so raising the monitor
-   still covers it, and pointer-events are off so it can never swallow a click
-   meant for the camera tab underneath. */
+/* Map Hacks mini-map overlay styling. */
 #officeMap {
     position: absolute;
     bottom: 7cqh;

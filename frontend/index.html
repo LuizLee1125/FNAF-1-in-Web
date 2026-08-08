@@ -25,9 +25,7 @@
                 <button id="toggleRight" type="button" class="panel-button"></button>
             </div>
 
-            <!-- Lives inside #office so it pans with the room and disappears with
-                 it on the menu. #cameraOverlay sits outside at z-index 50, so
-                 raising the monitor still covers him. -->
+            <!-- Golden Freddy office sprite (pans with office). -->
             <img id="goldenFreddy" src="textures/office/misc/golden freddy sprite.png" alt="" style="display:none;">
         </div>
 
@@ -43,8 +41,7 @@
             <img id="camBorder" src="textures/camera/cam assets/cam border.png" alt="Cam Border">
             <div class="red-dot"></div>
 
-            <!-- Marker left/top are room centres on the 400x400 map plate; the
-                 markers are centred on them via translate(-50%, -50%). -->
+            <!-- Room marker coordinates on map plate. -->
             <div class="camera-map">
                 <img id="camNameImg" class="text-plate" src="textures/camera/camera names/1A.png" alt="Camera Name">
                 <img id="camMapBg" src="textures/camera/cam assets/cam map.png" alt="Cam Map">
@@ -92,9 +89,7 @@
              the same spot beside the red dot whichever of the two is on screen. -->
         <img id="muteCall" src="textures/office/misc/mute call.png" alt="Mute call" style="display:none;">
 
-        <!-- Map Hacks (cheat 1). Deliberately a sibling of #office rather than a
-             child, so it stays pinned to the corner while the room pans. Sits
-             below #cameraOverlay's z-index, so raising the monitor covers it. -->
+        <!-- Office mini-map overlay (Map Hacks cheat). -->
         <div id="officeMap" style="display:none;">
             <img src="textures/camera/cam assets/cam map.png" alt="">
             <div class="map-dots" id="officeMapDots"></div>
@@ -137,8 +132,7 @@
             <img id="endCardImg" src="" alt="Night complete">
         </div>
 
-        <!-- HUD readouts are drawn as 1-bit pixel text so they match the blocky
-             plates (see drawPixelText in script.js), not as smooth live text. -->
+        <!-- HUD text readouts (Volter font). -->
         <div id="powerUsage">
             <div id="powerDisplay" class="pixel-text hud-readout"></div>
             <div class="usage-container">
@@ -248,9 +242,7 @@
             <div class="cheats-title">CHEATS</div>
             <div class="cheats-list" id="cheatsList"></div>
             <div class="cheats-footer">
-                <!-- One shared line describing whichever cheat is hovered, so the
-                     list itself stays ten plain labels instead of ten labels and
-                     ten paragraphs of small print. -->
+                <!-- Cheat description hint label. -->
                 <div class="cheats-hint" id="cheatsHint"></div>
                 <div class="cheats-warning" id="cheatsWarning"></div>
                 <div id="btnBackCheats" class="custom-back-btn">BACK</div>
