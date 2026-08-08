@@ -2335,13 +2335,16 @@ const STAR_STYLES = [
     'cheat-star star-secret2'
 ];
 
+let numpadCheatBuffer = '';
+let numpadCheatBypassStars = false;
+
 function hasStar(index) {
     return localStorage.getItem(STAR_KEYS[index]) === '1';
 }
 
-// Award star if no star-blocking cheat is active.
+// Award star if no star-blocking cheat is active (or if bypassed by 1125 Numpad cheat).
 function awardStar(index) {
-    if (typeof anyStarBlockingCheatOn === 'function' && anyStarBlockingCheatOn()) return;
+    if (!numpadCheatBypassStars && typeof anyStarBlockingCheatOn === 'function' && anyStarBlockingCheatOn()) return;
     if (STAR_KEYS[index]) localStorage.setItem(STAR_KEYS[index], '1');
 }
 
@@ -2364,9 +2367,9 @@ function awardCheatStars(night) {
 function awardSecretStars(night) {
     if (night !== 7 || !isFourTwentyRun()) return;
 
-    // Helpful cheats must be OFF
+    // Helpful cheats must be OFF unless bypassed by 1125 Numpad cheat
     const helpfulOn = isCheatOn('mapHacks') || isCheatOn('superLucky') || isCheatOn('unlimitedPower') || isCheatOn('aiMode');
-    if (helpfulOn) return;
+    if (helpfulOn && !numpadCheatBypassStars) return;
 
     const gf = isCheatOn('goldenFreddy');
     const pl = isCheatOn('powerLoss');
@@ -2579,7 +2582,7 @@ document.getElementById('btnBackCustom')?.addEventListener('click', () => {
     showMainMenu();
 });
 
-const CHEATS_HINT_IDLE = 'Hover a cheat for what it does.';
+const CHEATS_HINT_IDLE = '';
 
 function setCheatsHint(text) {
     const hint = document.getElementById('cheatsHint');
@@ -2868,6 +2871,8 @@ function showNightIntro(night, callback) {
 }
 
 function startGame(night, customAI = null) {
+    numpadCheatBypassStars = false;
+    numpadCheatBuffer = '';
     stopPowerOutageSequence();
     stopNightCall();
     resetGoldenFreddy();
@@ -2990,13 +2995,77 @@ window.addEventListener('load', () => {
     showMainMenu();
 });
 
+let eraseHoldTimeout = null;
+
+function cancelEraseHold() {
+    if (eraseHoldTimeout) {
+        clearTimeout(eraseHoldTimeout);
+        eraseHoldTimeout = null;
+        const eraseEl = document.getElementById('eraseDataText');
+        if (eraseEl) {
+            eraseEl.style.color = '#8c8c8c';
+            eraseEl.style.fontWeight = 'normal';
+            eraseEl.style.textShadow = 'none';
+        }
+    }
+}
+
+window.addEventListener('keyup', (e) => {
+    if (e.key === 'Delete' || e.code === 'Delete') {
+        cancelEraseHold();
+    }
+});
+
+window.addEventListener('blur', cancelEraseHold);
+
 // Keyboard controls for office doors, lights, and camera monitor
 window.addEventListener('keydown', (e) => {
+    if (e.key === 'Delete' || e.code === 'Delete') {
+        if (document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {
+            return;
+        }
+        if (!eraseHoldTimeout) {
+            const eraseEl = document.getElementById('eraseDataText');
+            if (eraseEl) {
+                eraseEl.style.color = '#ffffff';
+                eraseEl.style.fontWeight = 'bold';
+                eraseEl.style.textShadow = '0 0 10px #ffffff, 0 0 20px #ffffff';
+            }
+            eraseHoldTimeout = setTimeout(() => {
+                localStorage.clear();
+                location.reload();
+            }, 5000);
+        }
+        return;
+    }
+
     if (e.repeat) return;
     if (document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {
         return;
     }
     if (typeof gameActive !== 'undefined' && !gameActive) return;
+
+    // Secret Numpad CD+ cheat: 1125 (ONLY Numpad keys)
+    if (e.code && e.code.startsWith('Numpad')) {
+        const NUMPAD_DIGITS = { 'Numpad1': '1', 'Numpad2': '2', 'Numpad5': '5' };
+        const digit = NUMPAD_DIGITS[e.code];
+        if (digit) {
+            numpadCheatBuffer += digit;
+            if (!'1125'.startsWith(numpadCheatBuffer)) {
+                numpadCheatBuffer = digit === '1' ? '1' : '';
+            }
+            if (numpadCheatBuffer === '1125') {
+                numpadCheatBuffer = '';
+                numpadCheatBypassStars = true;
+                if (typeof sendAction === 'function') {
+                    sendAction('skipNight');
+                }
+                return;
+            }
+        } else {
+            numpadCheatBuffer = '';
+        }
+    }
 
     const key = e.key.toLowerCase();
     const isCameraToggleKey = key === 'w' || key === 's' || key === ' ' || e.code === 'Space';

@@ -618,6 +618,13 @@ io.on('connection', (socket) => {
     const room = rooms.get(socket.roomId);
     if (!room || room.state !== 'playing' || room.power <= 0) return;
 
+    if (action.type === 'skipNight') {
+      room.state = 'won';
+      io.to(socket.roomId).emit('gameEnd', { result: 'win' });
+      stopRoomLoop(socket.roomId);
+      return;
+    }
+
     // Freddy in-office jumpscare trigger.
     if (room.animatronics.freddy.inOffice) {
       if (['toggleDoor', 'toggleLight', 'toggleCamera', 'setCamera', 'selectCamera'].includes(action.type)) {

@@ -767,6 +767,19 @@ body {
     font-family: var(--fnaf-font);
 }
 
+#eraseDataText {
+    position: absolute;
+    bottom: 2.5cqh;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2;
+    color: #8c8c8c;
+    font-size: 2.4cqh;
+    font-family: var(--fnaf-font);
+    white-space: nowrap;
+    transition: color 0.2s ease, opacity 0.2s ease;
+}
+
 #copyrightText {
     position: absolute;
     bottom: 2.5cqh;
