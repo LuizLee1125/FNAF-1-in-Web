@@ -111,12 +111,12 @@ function hasCheat(room, id) {
   return !!(room && room.cheats && room.cheats.has(id));
 }
 
-// 3-17s normally; the two luck cheats pin it to an end of that range.
+// 1-17s normally; the two luck cheats pin it to an end of that range.
 function rollFoxyStallMs(room) {
   let seconds;
-  if (hasCheat(room, 'unlucky')) seconds = 3;
+  if (hasCheat(room, 'unlucky')) seconds = 1;
   else if (hasCheat(room, 'superLucky')) seconds = 17;
-  else seconds = Math.random() * 14 + 3;
+  else seconds = Math.random() * 16 + 1;
   return Math.floor(seconds * 1000 * room.clockMult);
 }
 
@@ -631,12 +631,8 @@ function gameTick(roomId) {
   for (const [name, config] of Object.entries(MOVEMENT_CONFIG)) {
     const anim = room.animatronics[name];
 
-    if (name === 'foxy' && (anim.stallTimerMs > 0 || anim.foxyStage === 3)) {
-      if (anim.stallTimerMs > 0) {
-        anim.stallTimerMs = Math.max(0, anim.stallTimerMs - deltaMs);
-      }
-      anim.movementTimerMs = 0;
-      continue;
+    if (name === 'foxy' && anim.stallTimerMs > 0) {
+      anim.stallTimerMs = Math.max(0, anim.stallTimerMs - deltaMs);
     }
 
     const intervalMs = config.intervalMs * room.clockMult;
