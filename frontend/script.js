@@ -2895,4 +2895,55 @@ window.addEventListener('load', () => {
     showMainMenu();
 });
 
+// Keyboard controls for office doors, lights, and camera monitor
+window.addEventListener('keydown', (e) => {
+    if (e.repeat) return;
+    if (document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {
+        return;
+    }
+    if (typeof gameActive !== 'undefined' && !gameActive) return;
+
+    const key = e.key.toLowerCase();
+    const isCameraToggleKey = key === 'w' || key === 's' || key === ' ' || e.code === 'Space';
+
+    if (isCameraToggleKey) {
+        e.preventDefault();
+        if (cameraAnimating) return;
+        if (isCameraUp) {
+            closeCamera();
+        } else {
+            openCamera();
+            sendAction('setCamera', null, true);
+        }
+        return;
+    }
+
+    const isOfficeControlKey = key === 'q' || key === 'a' || key === 'e' || key === 'd';
+    if (isOfficeControlKey) {
+        e.preventDefault();
+        if (isCameraUp || cameraAnimating) return;
+
+        const side = (key === 'q' || key === 'a') ? 'left' : 'right';
+        const isDoorAction = key === 'q' || key === 'e';
+
+        if (jammedState && jammedState[side]) {
+            if (typeof playSound === 'function') playSound('error');
+            sendAction(isDoorAction ? 'toggleDoor' : 'toggleLight', side);
+            return;
+        }
+
+        if (isDoorAction) {
+            sendAction('toggleDoor', side);
+            if (typeof playSound === 'function') playSound('doorClick');
+        } else {
+            sendAction('toggleLight', side);
+            if (!lightState[side]) {
+                if (typeof playSound === 'function') playSound('lightClick');
+            } else {
+                if (typeof stopSound === 'function') stopSound('lightClick');
+            }
+        }
+    }
+});
+
 requestAnimationFrame(frame);
