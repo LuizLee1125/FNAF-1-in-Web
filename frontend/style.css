@@ -905,8 +905,12 @@ body {
    Slots 3-8 are the cheat stars: the same PNG is used as a *mask* instead, so
    the silhouette is preserved while the fill becomes a flat colour, a colour
    cycle, or a hue rotation. Anything else (tint filters, recoloured copies of
-   the asset) either loses the shape or needs six more PNGs.                 */
-.star-slot.cheat-star {
+   the asset) either loses the shape or needs six more PNGs.
+
+   Deliberately unscoped: the cheats menu paints the same classes onto a small
+   swatch in each row, so a cheat previews the exact star it pays out. Only the
+   sizing stays tied to .star-slot, since that is the only slot-specific part. */
+.cheat-star {
     -webkit-mask-image: url('textures/main menu/star.png');
     mask-image: url('textures/main menu/star.png');
     -webkit-mask-size: contain;
@@ -919,17 +923,17 @@ body {
 }
 
 /* 4th — Golden Freddy */
-.star-slot.star-gold {
+.star-gold {
     background-color: #ffc522;
 }
 
 /* 5th — Power Loss */
-.star-slot.star-green {
+.star-green {
     background-color: #35d94a;
 }
 
 /* 6th — Insta Bonnie Chica */
-.star-slot.star-purpleyellow {
+.star-purpleyellow {
     animation: starPurpleYellow 2.2s steps(1, end) infinite;
 }
 
@@ -939,7 +943,7 @@ body {
 }
 
 /* 7th — Unlucky: brown, purple, yellow, red, gold */
-.star-slot.star-multi {
+.star-multi {
     animation: starMulti 4s steps(1, end) infinite;
 }
 
@@ -951,8 +955,8 @@ body {
     80% { background-color: #ffc522; }
 }
 
-/* 8th — Real Time. The only star that breaks the row's height. */
-.star-slot.star-rainbow {
+/* 8th — Real Time. The only star that breaks the menu row's height. */
+.star-rainbow {
     animation: starRainbow 3s linear infinite;
 }
 
@@ -973,11 +977,11 @@ body {
 }
 
 /* 9th — Speed */
-.star-slot.star-red {
+.star-red {
     background-color: #e02020;
 }
 
-.star-slot.star-pulse {
+.star-pulse {
     animation: starPulse 0.9s ease-in-out infinite;
 }
 
@@ -1017,63 +1021,96 @@ body {
 }
 
 .cheats-title {
-    font-size: 5cqh;
-    margin-bottom: 2.6cqh;
-    letter-spacing: 0.3cqh;
+    font-size: 4.4cqh;
+    letter-spacing: 0.8cqh;
+    /* Optical centring: letter-spacing pads the right of the last glyph, which
+       drags the word left of true centre without this. */
+    text-indent: 0.8cqh;
+    margin-bottom: 3.2cqh;
+    color: #d2d2d2;
 }
 
+/* One centred column, sized so the labels sit in the middle third of the frame
+   the way Custom Night's do. No boxes, no rules, no fills — the surrounding
+   screens are flat text on black and this one has to match them. */
 .cheats-list {
     display: flex;
     flex-direction: column;
-    width: 108cqh;
+    width: 96cqh;
     max-width: 100%;
-    gap: 0.5cqh;
 }
 
 .cheat-row {
+    position: relative;
     display: flex;
-    align-items: center;
-    gap: 1.6cqh;
-    padding: 0.5cqh 0;
+    align-items: baseline;
+    gap: 2cqh;
+    padding: 0.85cqh 0;
     cursor: pointer;
-    color: #9a9a9a;
+    color: #8f8f8f;
     transition: color 0.1s ease;
+}
+
+/* The main menu marks its hovered item with ">>" set outside the label. Same
+   idiom here rather than a highlight bar, which nothing else in the game uses. */
+.cheat-row::before {
+    content: '>>';
+    position: absolute;
+    right: 100%;
+    margin-right: 1.6cqh;
+    font-size: 2.6cqh;
+    color: #fff;
+    opacity: 0;
+    transition: opacity 0.1s ease;
 }
 
 .cheat-row:hover {
     color: #fff;
 }
 
+.cheat-row:hover::before {
+    opacity: 1;
+}
+
 .cheat-num {
-    width: 4cqh;
+    width: 3.2cqh;
     text-align: right;
-    font-size: 2.7cqh;
+    font-size: 2.2cqh;
+    color: #4f4f4f;
     flex: 0 0 auto;
 }
 
-.cheat-text {
+.cheat-name {
     flex: 1 1 auto;
     min-width: 0;
+    font-size: 3cqh;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.cheat-name {
-    font-size: 2.9cqh;
-    line-height: 1.1;
+/* The star this cheat pays out, in its real colour — the same mask classes the
+   main menu uses, so the two can never drift apart. The slot is reserved on
+   every row, star or not, to keep the ON/OFF column straight. */
+.cheat-star-mark {
+    flex: 0 0 auto;
+    width: 2.3cqh;
+    height: 2.3cqh;
+    align-self: center;
+    opacity: 0.55;
+    transition: opacity 0.1s ease;
 }
 
-.cheat-desc {
-    font-size: 1.9cqh;
-    line-height: 1.2;
-    color: #6a6a6a;
-    margin-top: 0.2cqh;
+.cheat-row.is-on .cheat-star-mark {
+    opacity: 1;
 }
 
 .cheat-toggle {
     flex: 0 0 auto;
-    width: 8cqh;
+    width: 9cqh;
     text-align: right;
-    font-size: 2.7cqh;
-    color: #6a6a6a;
+    font-size: 2.4cqh;
+    color: #575757;
 }
 
 .cheat-row.is-on {
@@ -1081,37 +1118,54 @@ body {
 }
 
 .cheat-row.is-on .cheat-toggle {
-    color: #35d94a;
+    color: #cfcfcf;
 }
 
 /* Blocked by its mutually exclusive partner — visibly inert, not hidden, so it
-   is obvious *why* it won't turn on. */
+   is obvious *why* it won't turn on. The reason goes in the hint line. */
 .cheat-row.is-locked {
     cursor: default;
-    color: #3d3d3d;
+    color: #3a3a3a;
 }
 
 .cheat-row.is-locked:hover {
-    color: #3d3d3d;
+    color: #3a3a3a;
 }
 
-.cheat-row.is-locked .cheat-desc,
+.cheat-row.is-locked::before {
+    content: none;
+}
+
+.cheat-row.is-locked .cheat-num,
 .cheat-row.is-locked .cheat-toggle {
-    color: #2e2e2e;
+    color: #2d2d2d;
+}
+
+.cheat-row.is-locked .cheat-star-mark {
+    opacity: 0.1;
 }
 
 .cheats-footer {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 1.4cqh;
-    margin-top: 2.6cqh;
+    gap: 0.8cqh;
+    margin-top: 3.2cqh;
+}
+
+/* Both of these reserve their height so nothing below them shifts as they
+   change with the pointer. */
+.cheats-hint {
+    font-size: 2.1cqh;
+    color: #8a8a8a;
+    min-height: 2.6cqh;
+    text-align: center;
 }
 
 .cheats-warning {
     font-size: 2.1cqh;
-    color: #b03030;
-    min-height: 2.4cqh;
+    color: #9a3535;
+    min-height: 2.6cqh;
     text-align: center;
 }
 

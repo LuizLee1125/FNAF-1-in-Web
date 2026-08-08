@@ -2660,69 +2660,93 @@ document.getElementById('btnBackCustom')?.addEventListener('click', () => {
 /* ------------------------------ Cheats menu -------------------------------
    Rows are built from the CHEATS array in cheats.js rather than written out in
    index.html, so a cheat is added in exactly one place. */
+const CHEATS_HINT_IDLE = 'Hover a cheat for what it does.';
+
+function setCheatsHint(text) {
+    const hint = document.getElementById('cheatsHint');
+    if (hint) hint.textContent = text || CHEATS_HINT_IDLE;
+}
+
+/* One row per cheat: number, name, the star it pays out, and its state. The
+   description lives in the shared line under the list rather than under every
+   row — ten labels read as a menu, ten labels each with their own paragraph of
+   small print read as a settings page, and this screen sits next to Custom
+   Night, which is plain centred text on black.
+
+   Kept in the original 1-10 order. That is the numbering the cheats were
+   specified in and the one to reach for when talking about them, and the star
+   swatch already shows at a glance which of them forfeit stars and which pay
+   one out — so regrouping would cost the familiar order to restate something
+   the row already says. */
+function buildCheatRow(cheat) {
+    const on = isCheatOn(cheat.id);
+    const locked = isCheatLocked(cheat.id);
+
+    const row = document.createElement('div');
+    row.className = 'cheat-row' + (on ? ' is-on' : '') + (locked ? ' is-locked' : '');
+
+    const num = document.createElement('div');
+    num.className = 'cheat-num';
+    num.textContent = cheat.num;
+
+    const name = document.createElement('div');
+    name.className = 'cheat-name';
+    name.textContent = cheat.name;
+
+    row.appendChild(num);
+    row.appendChild(name);
+
+    // The star this cheat pays out, in the colour it will actually be. Every
+    // row reserves the slot so the names stay on one column whether or not a
+    // given cheat has a star.
+    const mark = document.createElement('div');
+    mark.className = 'cheat-star-mark';
+    if (cheat.starIndex !== null && STAR_STYLES[cheat.starIndex]) {
+        mark.className += ' ' + STAR_STYLES[cheat.starIndex];
+    }
+    row.appendChild(mark);
+
+    const toggle = document.createElement('div');
+    toggle.className = 'cheat-toggle';
+    toggle.textContent = locked ? 'LOCKED' : (on ? 'ON' : 'OFF');
+    row.appendChild(toggle);
+
+    // Say *why* a locked cheat won't turn on rather than just grEying it out.
+    const hint = locked
+        ? 'Locked while ' + getCheat(cheat.mutex).name + ' is on.'
+        : cheat.desc;
+    row.addEventListener('mouseenter', () => setCheatsHint(hint));
+    row.addEventListener('mouseleave', () => setCheatsHint(''));
+
+    if (!locked) {
+        row.addEventListener('click', () => {
+            toggleCheat(cheat.id);
+            playSound('Blip3');
+            renderCheatsList();
+            setCheatsHint(hint);
+        });
+    }
+    return row;
+}
+
 function renderCheatsList() {
     const list = document.getElementById('cheatsList');
     const warning = document.getElementById('cheatsWarning');
     if (!list) return;
 
     list.innerHTML = '';
-
-    CHEATS.forEach(cheat => {
-        const on = isCheatOn(cheat.id);
-        const locked = isCheatLocked(cheat.id);
-
-        const row = document.createElement('div');
-        row.className = 'cheat-row' + (on ? ' is-on' : '') + (locked ? ' is-locked' : '');
-
-        const num = document.createElement('div');
-        num.className = 'cheat-num';
-        num.textContent = cheat.num + '.';
-
-        const text = document.createElement('div');
-        text.className = 'cheat-text';
-
-        const name = document.createElement('div');
-        name.className = 'cheat-name';
-        name.textContent = cheat.name;
-
-        const desc = document.createElement('div');
-        desc.className = 'cheat-desc';
-        // Say *why* it can't be turned on rather than just greying it out.
-        desc.textContent = locked
-            ? 'Locked while ' + getCheat(cheat.mutex).name + ' is on.'
-            : cheat.desc;
-
-        const toggle = document.createElement('div');
-        toggle.className = 'cheat-toggle';
-        toggle.textContent = locked ? '--' : (on ? 'ON' : 'OFF');
-
-        text.appendChild(name);
-        text.appendChild(desc);
-        row.appendChild(num);
-        row.appendChild(text);
-
-        row.appendChild(toggle);
-
-        if (!locked) {
-            row.addEventListener('click', () => {
-                toggleCheat(cheat.id);
-                playSound('Blip3');
-                renderCheatsList();
-            });
-        }
-
-        list.appendChild(row);
-    });
+    CHEATS.forEach(cheat => list.appendChild(buildCheatRow(cheat)));
 
     if (warning) {
         warning.textContent = anyStarBlockingCheatOn()
-            ? 'No stars can be earned with these cheats on.'
+            ? 'Stars are disabled for this run.'
             : '';
     }
 }
 
 function showCheatsScreen() {
     renderCheatsList();
+    setCheatsHint('');
     mainMenu.style.display = 'none';
     const screen = document.getElementById('cheatsScreen');
     if (screen) screen.style.display = 'flex';
