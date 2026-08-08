@@ -140,17 +140,18 @@
         <!-- HUD readouts are drawn as 1-bit pixel text so they match the blocky
              plates (see drawPixelText in script.js), not as smooth live text. -->
         <div id="powerUsage">
-            <canvas id="powerDisplay" class="pixel-text"></canvas>
+            <div id="powerDisplay" class="pixel-text hud-readout"></div>
             <div class="usage-container">
-                <canvas id="usageLabel" class="pixel-text"></canvas>
+                <div id="usageLabel" class="pixel-text hud-readout"></div>
                 <img id="powerUsageImg" src="textures/power/1 usage.png" alt="Power Usage">
                 <div id="usageDisplay" style="display: none;">1</div>
             </div>
         </div>
 
         <div id="timeDisplayContainer">
-            <canvas id="timeDisplay" class="pixel-text"></canvas>
-            <canvas id="nightDisplay" class="pixel-text"></canvas>
+            <div id="timeDisplay" class="pixel-text time-readout"></div>
+            <div id="nightDisplay" class="pixel-text night-readout"></div>
+            <div id="realTimeTimerDisplay" class="pixel-text timer-readout" style="display: none;"></div>
         </div>
 
         <div id="mainMenu" style="display:none;">

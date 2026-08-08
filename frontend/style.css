@@ -9,8 +9,16 @@
    shadow and no letter spacing. --fnaf-font is the single source of truth.
 --------------------------------------------------------------------------- */
 
+@font-face {
+    font-family: 'Volter';
+    src: url('volter.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+}
+
 :root {
-    --fnaf-font: Consolas, 'Lucida Console', 'DejaVu Sans Mono', 'Liberation Mono', monospace;
+    --fnaf-font: 'Volter', Consolas, 'Lucida Console', 'DejaVu Sans Mono', 'Liberation Mono', monospace;
+    --fnaf-consolas-font: Consolas, 'Lucida Console', 'DejaVu Sans Mono', 'Liberation Mono', monospace;
 }
 
 html,
@@ -221,8 +229,30 @@ body {
    with nearest-neighbour so they read as the same blocky bitmap face as
    "kitchen txt.png". JS sets width/height in cqh so they scale with the frame. */
 .pixel-text {
-    image-rendering: pixelated;
-    display: block;
+    color: #fff;
+    font-family: var(--fnaf-font);
+    font-weight: normal;
+    white-space: nowrap;
+    user-select: none;
+    line-height: 1;
+}
+
+.hud-readout {
+    font-size: 2.8cqh;
+}
+
+.time-readout {
+    font-size: 5.2cqh;
+}
+
+.night-readout {
+    font-size: 2.8cqh;
+}
+
+.timer-readout {
+    font-size: 2.2cqh;
+    color: #e0e0e0;
+    margin-top: 0.2cqh;
 }
 
 /* Plain white Consolas — kept for live text that isn't drawn as pixel text. */
@@ -252,7 +282,7 @@ body {
 }
 
 #aiDisplay {
-    font-family: var(--fnaf-font);
+    font-family: var(--fnaf-consolas-font);
     font-size: 2.6cqh;
     font-weight: normal;
 }
@@ -999,7 +1029,7 @@ body {
    height instead would render this one label visibly smaller than the rest. */
 .menu-live-label {
     display: block;
-    font-family: var(--fnaf-font);
+    font-family: var(--fnaf-consolas-font);
     font-size: 4.9cqh;
     line-height: 4.6cqh;
     color: #fff;
@@ -1015,7 +1045,7 @@ body {
     align-items: center;
     justify-content: center;
     color: #fff;
-    font-family: var(--fnaf-font);
+    font-family: var(--fnaf-consolas-font);
     padding: 3cqh 4cqh;
     box-sizing: border-box;
 }

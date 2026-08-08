@@ -193,51 +193,24 @@ function updateCctvPan() {
 
    Blockiness is set by how small the source is drawn before it gets blown up:
    a bigger cell means finer steps for the same on-screen size. */
-const PIXEL_FONT_PX = 18;
-const PIXEL_CELL_W = 10;       // ≈ Consolas' 0.5498em advance at 18px
-const PIXEL_CELL_H = 19;
-const PIXEL_BASELINE = 14;
-const PIXEL_ALPHA_CUT = 110;   // coverage below this is dropped, above it is solid
+const PIXEL_FONT_PX = 12;
+const PIXEL_CELL_W = 8;        // Volter's native 12px cell advance
+const PIXEL_CELL_H = 14;
+const PIXEL_BASELINE = 10;
+const PIXEL_ALPHA_CUT = 40;    // Clean threshold for Volter pixel glyphs
 // Keep the on-screen glyph pitch on the camera-name plates' 21.63px regardless
 // of how the source cell is sized, so changing the two above only changes grain.
 const PIXEL_TARGET_ADVANCE_PX = 21.63;
 const PIXEL_UPSCALE_CQH = (PIXEL_TARGET_ADVANCE_PX / PIXEL_CELL_W) / 720 * 100;
 // Spelled out rather than read from --fnaf-font: ctx.font silently ignores a
 // value it cannot parse, which would leave the HUD in 10px sans-serif.
-const PIXEL_FONT_STACK = 'Consolas, "Lucida Console", "DejaVu Sans Mono", monospace';
+const PIXEL_FONT_STACK = 'Volter, Consolas, "Lucida Console", "DejaVu Sans Mono", monospace';
 
-function drawPixelText(canvas, text) {
-    if (!canvas || canvas.dataset.pixelText === text) return;
-    canvas.dataset.pixelText = text;
-
-    const w = Math.max(1, text.length * PIXEL_CELL_W);
-    canvas.width = w;
-    canvas.height = PIXEL_CELL_H;
-
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    ctx.clearRect(0, 0, w, PIXEL_CELL_H);
-    ctx.font = `${PIXEL_FONT_PX}px ${PIXEL_FONT_STACK}`;
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle = '#fff';
-
-    for (let i = 0; i < text.length; i++) {
-        const ch = text[i];
-        if (ch === ' ') continue;
-        const advance = ctx.measureText(ch).width;
-        ctx.fillText(ch, i * PIXEL_CELL_W + (PIXEL_CELL_W - advance) / 2, PIXEL_BASELINE);
+function drawPixelText(el, text) {
+    if (!el) return;
+    if (el.textContent !== text) {
+        el.textContent = text;
     }
-
-    const image = ctx.getImageData(0, 0, w, PIXEL_CELL_H);
-    const px = image.data;
-    for (let i = 0; i < px.length; i += 4) {
-        const on = px[i + 3] > PIXEL_ALPHA_CUT;
-        px[i] = px[i + 1] = px[i + 2] = 255;
-        px[i + 3] = on ? 255 : 0;
-    }
-    ctx.putImageData(image, 0, 0);
-
-    canvas.style.width = (w * PIXEL_UPSCALE_CQH) + 'cqh';
-    canvas.style.height = (PIXEL_CELL_H * PIXEL_UPSCALE_CQH) + 'cqh';
 }
 
 /* --------------------------- Text plate matting ---------------------------
@@ -2197,6 +2170,17 @@ function onServerState(state) {
 }
 
 let lastFrameTime = 0;
+let realTimeTimerStart = null;
+
+function formatRealTimeTimer(ms) {
+    if (ms < 0) ms = 0;
+    const totalSec = Math.floor(ms / 1000);
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${pad(h)}:${pad(m)}:${pad(s)}`;
+}
 
 function frame(now) {
     const deltaSec = lastFrameTime ? Math.min(0.1, (now - lastFrameTime) / 1000) : 0;
@@ -2217,6 +2201,17 @@ function frame(now) {
             office.style.left = cameraPan + "%";
         }
     }
+
+    const realTimeDisplay = document.getElementById('realTimeTimerDisplay');
+    if (realTimeDisplay) {
+        if (runCheatOn('realTime') && realTimeTimerStart && currentState && currentState.power > 0 && !isPowerOutage) {
+            realTimeDisplay.style.display = 'block';
+            drawPixelText(realTimeDisplay, formatRealTimeTimer(Date.now() - realTimeTimerStart));
+        } else {
+            realTimeDisplay.style.display = 'none';
+        }
+    }
+
     requestAnimationFrame(frame);
 }
 
@@ -2817,6 +2812,7 @@ function startMenuMusic() {
 }
 
 function showMainMenu() {
+    realTimeTimerStart = null;
     stopPowerOutageSequence();
     resetGoldenFreddy();
     if (typeof AIBot !== 'undefined') AIBot.stop();
@@ -2964,7 +2960,9 @@ function startGame(night, customAI = null) {
     }
 
     hideMainMenu();
+    realTimeTimerStart = null;
     showNightIntro(night, () => {
+        realTimeTimerStart = Date.now();
         joinGame(currentRoomId, night, customAI, getEnabledCheats());
         startPirateSongRolls();
         // Counted from the moment the shift actually starts, not from the card.
@@ -3049,6 +3047,19 @@ drawPixelText(document.getElementById('usageLabel'), 'Usage:');
 drawPixelText(document.getElementById('powerDisplay'), 'Power left: 100%');
 drawPixelText(document.getElementById('timeDisplay'), '12 AM');
 drawPixelText(document.getElementById('nightDisplay'), 'Night 1');
+
+if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => {
+        ['usageLabel', 'powerDisplay', 'timeDisplay', 'nightDisplay'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) delete el.dataset.pixelText;
+        });
+        drawPixelText(document.getElementById('usageLabel'), 'Usage:');
+        drawPixelText(document.getElementById('powerDisplay'), 'Power left: ' + (gameState ? gameState.power : 100) + '%');
+        drawPixelText(document.getElementById('timeDisplay'), (gameState && gameState.hour ? (gameState.hour === 0 ? 12 : gameState.hour) : 12) + ' AM');
+        drawPixelText(document.getElementById('nightDisplay'), 'Night ' + currentNight);
+    });
+}
 
 window.addEventListener('load', () => {
     showMainMenu();
