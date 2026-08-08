@@ -2041,23 +2041,37 @@ function onServerState(state) {
     prevLightState.left = state.lights.left;
     prevLightState.right = state.lights.right;
 
-    // Check random garble audio and trigger 5-second camera blackout when an animatronic moves
     if (prevAnimLocations.freddy !== null) {
+        // Freddy's laugh is his own cue and is not tied to the feed at all — it
+        // plays wherever he goes, monitor up or down.
         if (prevAnimLocations.freddy !== a.freddy.location) {
             const laughs = ['freddyLaugh1', 'freddyLaugh2', 'freddyLaugh3'];
             const randLaugh = laughs[Math.floor(Math.random() * laughs.length)];
             playSound(randLaugh);
         }
 
-        if (prevAnimLocations.freddy !== a.freddy.location ||
-            prevAnimLocations.bonnie !== a.bonnie.location ||
-            prevAnimLocations.chica !== a.chica.location ||
-            prevAnimLocations.foxy !== a.foxy.location ||
-            prevAnimLocations.foxyStage !== a.foxy.foxyStage) {
+        /* The feed only cuts out when Bonnie or Chica move, and only on the
+           camera being watched at that moment.
 
-            triggerCameraBlackout();
+           It used to fire on any of the four moving, anywhere, whether or not
+           the monitor was even up. On a busy night that is four clocks between
+           3 and 5 seconds against a 5-second blackout, so the picture was
+           static more often than not and the cameras stopped being usable.
+           Freddy and Foxy no longer touch it: he has his laugh and Foxy has the
+           cove, neither of which needs the screen to break.
 
-            if (state.cameraUp) {
+           Either end of the move counts — she vanished from the room being
+           watched, or she walked into it. Both are the picture changing under
+           the player, which is what the static is for. */
+        if (state.cameraUp) {
+            const disturbed = ['bonnie', 'chica'].some(name => {
+                const from = prevAnimLocations[name];
+                const to = a[name].location;
+                return from !== to && (selectedCamera === from || selectedCamera === to);
+            });
+
+            if (disturbed) {
+                triggerCameraBlackout();
                 const garbles = ['garble1', 'garble2', 'garble3'];
                 const randG = garbles[Math.floor(Math.random() * garbles.length)];
                 playSound(randG);
