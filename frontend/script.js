@@ -2318,7 +2318,8 @@ function setSavedNight(night) {
 const STAR_KEYS = [
     'fnaf_star_night5', 'fnaf_star_night6', 'fnaf_star_night7',
     'fnaf_star_golden', 'fnaf_star_powerloss', 'fnaf_star_instabc',
-    'fnaf_star_unlucky', 'fnaf_star_realtime', 'fnaf_star_speed'
+    'fnaf_star_unlucky', 'fnaf_star_realtime', 'fnaf_star_speed',
+    'fnaf_star_secret1', 'fnaf_star_secret2'
 ];
 
 // CSS classes per slot. Empty for the original three, which stay plain <img>.
@@ -2329,7 +2330,9 @@ const STAR_STYLES = [
     'cheat-star star-purpleyellow',
     'cheat-star star-multi',
     'cheat-star star-rainbow star-big',
-    'cheat-star star-red star-pulse'
+    'cheat-star star-red star-pulse',
+    'cheat-star star-secret1',
+    'cheat-star star-secret2'
 ];
 
 function hasStar(index) {
@@ -2349,11 +2352,38 @@ function isFourTwentyRun() {
     return ['freddy', 'bonnie', 'chica', 'foxy'].every(name => ai[name] === 20);
 }
 
-// Award Night 7 4/20 cheat stars.
+// Award Night 7 4/20 cheat stars and secret stars.
 function awardCheatStars(night) {
     if (night !== 7 || !isFourTwentyRun()) return;
-    if (typeof activeStarGrantingCheats !== 'function') return;
-    activeStarGrantingCheats().forEach(cheat => awardStar(cheat.starIndex));
+    if (typeof activeStarGrantingCheats === 'function') {
+        activeStarGrantingCheats().forEach(cheat => awardStar(cheat.starIndex));
+    }
+    awardSecretStars(night);
+}
+
+function awardSecretStars(night) {
+    if (night !== 7 || !isFourTwentyRun()) return;
+
+    // Helpful cheats must be OFF
+    const helpfulOn = isCheatOn('mapHacks') || isCheatOn('superLucky') || isCheatOn('unlimitedPower') || isCheatOn('aiMode');
+    if (helpfulOn) return;
+
+    const gf = isCheatOn('goldenFreddy');
+    const pl = isCheatOn('powerLoss');
+    const bc = isCheatOn('instaBonnieChica');
+    const un = isCheatOn('unlucky');
+    const sp = isCheatOn('speed');
+    const rt = isCheatOn('realTime');
+
+    // Secret Star 1: Golden Freddy, Power Loss, Insta Bonnie Chica, Unlucky, Speed
+    if (gf && pl && bc && un && sp) {
+        awardStar(9);
+    }
+
+    // Secret Star 2: Golden Freddy, Power Loss, Insta Bonnie Chica, Unlucky, Real Time, Speed
+    if (gf && pl && bc && un && sp && rt) {
+        awardStar(10);
+    }
 }
 
 // A cleared 5th night is what opens the 6th.
@@ -2451,7 +2481,9 @@ function renderMainMenu() {
         for (let i = 0; i < STAR_KEYS.length; i++) {
             const earned = hasStar(i);
             const isCheatStar = i >= 3;
-            if (isCheatStar && !earned) continue;
+            const isSecretStar = i >= 9;
+            if ((isCheatStar || isSecretStar) && !earned) continue;
+            if (isSecretStar) continue;
 
             const slot = document.createElement('div');
             slot.className = 'star-slot';
@@ -2467,6 +2499,26 @@ function renderMainMenu() {
                 }
             }
             starsContainer.appendChild(slot);
+        }
+    }
+
+    // Render earned secret stars on top of Scott Cawthon text at bottom right.
+    const secretContainer = document.getElementById('secretStarsMenuContainer');
+    if (secretContainer) {
+        secretContainer.innerHTML = '';
+
+        if (hasStar(9)) {
+            const slot1 = document.createElement('div');
+            slot1.className = 'secret-star-slot cheat-star star-secret1';
+            slot1.title = 'Beaten 4/20 mode with Golden Freddy, Power Loss, Insta Bonnie Chica, Unlucky, and Speed';
+            secretContainer.appendChild(slot1);
+        }
+
+        if (hasStar(10)) {
+            const slot2 = document.createElement('div');
+            slot2.className = 'secret-star-slot cheat-star star-secret2';
+            slot2.title = 'Beaten 4/20 mode with Golden Freddy, Power Loss, Insta Bonnie Chica, Unlucky, Real Time, and Speed';
+            secretContainer.appendChild(slot2);
         }
     }
 }
@@ -2586,6 +2638,42 @@ function buildCheatRow(cheat) {
     return row;
 }
 
+function buildSecretStarRow(starIndex) {
+    const isSecret1 = starIndex === 9;
+    const titleText = isSecret1
+        ? 'Beaten 4/20 mode with Golden Freddy, Power Loss, Insta Bonnie Chica, Unlucky, and Speed'
+        : 'Beaten 4/20 mode with Golden Freddy, Power Loss, Insta Bonnie Chica, Unlucky, Real Time, and Speed';
+
+    const row = document.createElement('div');
+    row.className = 'cheat-row is-on secret-cheat-row';
+
+    const num = document.createElement('div');
+    num.className = 'cheat-num';
+    num.textContent = isSecret1 ? 'S1' : 'S2';
+
+    const name = document.createElement('div');
+    name.className = 'cheat-name';
+    name.textContent = isSecret1 ? 'SECRET STAR 1' : 'SECRET STAR 2';
+
+    const mark = document.createElement('div');
+    mark.className = 'cheat-star-mark ' + STAR_STYLES[starIndex];
+    mark.title = titleText;
+
+    const toggle = document.createElement('div');
+    toggle.className = 'cheat-toggle';
+    toggle.textContent = 'UNLOCKED';
+
+    row.appendChild(num);
+    row.appendChild(name);
+    row.appendChild(mark);
+    row.appendChild(toggle);
+
+    row.addEventListener('mouseenter', () => setCheatsHint(titleText));
+    row.addEventListener('mouseleave', () => setCheatsHint(''));
+
+    return row;
+}
+
 function renderCheatsList() {
     const list = document.getElementById('cheatsList');
     const warning = document.getElementById('cheatsWarning');
@@ -2593,6 +2681,13 @@ function renderCheatsList() {
 
     list.innerHTML = '';
     CHEATS.forEach(cheat => list.appendChild(buildCheatRow(cheat)));
+
+    if (hasStar(9)) {
+        list.appendChild(buildSecretStarRow(9));
+    }
+    if (hasStar(10)) {
+        list.appendChild(buildSecretStarRow(10));
+    }
 
     if (warning) {
         warning.textContent = anyStarBlockingCheatOn()

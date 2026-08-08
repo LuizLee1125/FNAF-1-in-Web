@@ -917,37 +917,77 @@ body {
     background-color: #fff;
 }
 
-/* 4th — Golden Freddy */
+/* 4th — Golden Freddy: Shiny gold gradient sweep with pulsing glow aura */
 .star-gold {
-    background-color: #ffc522;
+    background: linear-gradient(135deg, #ffe066 0%, #ffc522 40%, #ffffff 50%, #ffc522 60%, #e6a100 100%);
+    background-size: 200% 200%;
+    animation: starGoldGlow 2.5s ease-in-out infinite;
+    filter: drop-shadow(0 0 5px rgba(255, 215, 0, 0.85)) drop-shadow(0 0 10px rgba(255, 197, 34, 0.6));
 }
 
-/* 5th — Power Loss */
+@keyframes starGoldGlow {
+    0%, 100% {
+        background-position: 0% 50%;
+        filter: drop-shadow(0 0 4px rgba(255, 215, 0, 0.7)) drop-shadow(0 0 8px rgba(255, 197, 34, 0.5));
+    }
+    50% {
+        background-position: 100% 50%;
+        filter: drop-shadow(0 0 9px rgba(255, 235, 120, 1)) drop-shadow(0 0 16px rgba(255, 197, 34, 0.95));
+    }
+}
+
+/* 5th — Power Loss: Shiny green gradient sweep with pulsing glow aura */
 .star-green {
-    background-color: #35d94a;
+    background: linear-gradient(135deg, #80ff8f 0%, #35d94a 40%, #ffffff 50%, #35d94a 60%, #1b9e2c 100%);
+    background-size: 200% 200%;
+    animation: starGreenGlow 2.5s ease-in-out infinite;
+    filter: drop-shadow(0 0 5px rgba(53, 217, 74, 0.85)) drop-shadow(0 0 10px rgba(27, 158, 44, 0.6));
 }
 
-/* 6th — Insta Bonnie Chica */
+@keyframes starGreenGlow {
+    0%, 100% {
+        background-position: 0% 50%;
+        filter: drop-shadow(0 0 4px rgba(53, 217, 74, 0.7)) drop-shadow(0 0 8px rgba(27, 158, 44, 0.5));
+    }
+    50% {
+        background-position: 100% 50%;
+        filter: drop-shadow(0 0 9px rgba(128, 255, 143, 1)) drop-shadow(0 0 16px rgba(53, 217, 74, 0.95));
+    }
+}
+
+/* 6th — Insta Bonnie Chica: Smooth RGB keyboard wave (Purple & Yellow) */
 .star-purpleyellow {
-    animation: starPurpleYellow 2.2s steps(1, end) infinite;
+    background: linear-gradient(90deg, #a03cd8, #e8d43a, #a03cd8, #e8d43a, #a03cd8);
+    background-size: 300% 100%;
+    animation: starPurpleYellowRGB 3s linear infinite;
+    filter: drop-shadow(0 0 4px rgba(160, 60, 216, 0.5)) drop-shadow(0 0 4px rgba(232, 212, 58, 0.5));
 }
 
-@keyframes starPurpleYellow {
-    0% { background-color: #a03cd8; }
-    50% { background-color: #e8d43a; }
+@keyframes starPurpleYellowRGB {
+    0% {
+        background-position: 0% 50%;
+    }
+    100% {
+        background-position: 100% 50%;
+    }
 }
 
-/* 7th — Unlucky: brown, purple, yellow, red, gold */
+/* 7th — Unlucky: Fast color alternation & continuous spin */
 .star-multi {
-    animation: starMulti 4s steps(1, end) infinite;
+    animation: starMultiColor 0.8s steps(1, end) infinite, starSpin 2.5s linear infinite;
 }
 
-@keyframes starMulti {
+@keyframes starMultiColor {
     0% { background-color: #7a4a20; }
     20% { background-color: #a03cd8; }
     40% { background-color: #e8d43a; }
     60% { background-color: #e02020; }
     80% { background-color: #ffc522; }
+}
+
+@keyframes starSpin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }
 
 /* 8th — Real Time. The only star that breaks the menu row's height. */
@@ -983,6 +1023,50 @@ body {
 @keyframes starPulse {
     0%, 100% { transform: scale(1); opacity: 1; }
     50% { transform: scale(1.28); opacity: 0.55; }
+}
+
+/* Secret Stars (Secret 1 & Secret 2) */
+.star-secret1 {
+    background: linear-gradient(90deg, #ff2d2d, #ff9a2d, #ffe92d, #3ddc4a, #2d9aff, #a03cd8, #ff2d2d, #ff9a2d, #ffe92d, #3ddc4a, #2d9aff, #a03cd8, #ff2d2d);
+    background-size: 300% 100%;
+    animation: starSecret1Anim 3s linear infinite;
+}
+
+.star-secret2 {
+    background: linear-gradient(90deg, #ff2d2d, #ff9a2d, #ffe92d, #3ddc4a, #2d9aff, #a03cd8, #ff2d2d, #ff9a2d, #ffe92d, #3ddc4a, #2d9aff, #a03cd8, #ff2d2d);
+    background-size: 300% 100%;
+    animation: starSecret1Anim 3s linear infinite, starPulse 0.9s ease-in-out infinite;
+}
+
+@keyframes starSecret1Anim {
+    0% {
+        background-position: 0% 50%;
+        filter: drop-shadow(0 0 5px rgba(255, 215, 0, 0.85)) drop-shadow(0 0 10px rgba(255, 197, 34, 0.6));
+    }
+    50% {
+        filter: drop-shadow(0 0 12px rgba(255, 235, 120, 1)) drop-shadow(0 0 20px rgba(255, 197, 34, 0.95));
+    }
+    100% {
+        background-position: 300% 50%;
+        filter: drop-shadow(0 0 5px rgba(255, 215, 0, 0.85)) drop-shadow(0 0 10px rgba(255, 197, 34, 0.6));
+    }
+}
+
+#secretStarsMenuContainer {
+    position: absolute;
+    bottom: 6cqh;
+    right: 2.5cqh;
+    z-index: 10;
+    display: flex;
+    gap: 1.5cqh;
+    align-items: center;
+}
+
+.secret-star-slot {
+    width: 6.8cqh;
+    height: 6.8cqh;
+    flex: 0 0 auto;
+    cursor: pointer;
 }
 
 /* Cheats menu styling. */
@@ -1078,8 +1162,8 @@ body {
 /* Cheat star indicator swatch. */
 .cheat-star-mark {
     flex: 0 0 auto;
-    width: 2.3cqh;
-    height: 2.3cqh;
+    width: 3.4cqh;
+    height: 3.4cqh;
     align-self: center;
     opacity: 0.55;
     transition: opacity 0.1s ease;
