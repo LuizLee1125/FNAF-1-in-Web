@@ -54,21 +54,25 @@ managing limited power, and defending against the animatronics.
 ```
 FNAF-1-in-Web/
 │
-├── frontend/
-│   ├── assets/
-│   ├── css/
-│   ├── js/
-│   └── index.html
-│
 ├── backend/
-│   ├── server.js
-│   ├── routes/
-│   └── package.json
+│   ├── package-lock.json
+│   ├── package.json
+│   └── server.js
 │
+├── frontend/
+│   ├── audio/
+│   ├── textures/
+│   ├── aibot.js
+│   ├── cheats.js
+│   ├── client.js
+│   ├── index.html
+│   ├── script.js
+│   ├── style.css
+│   └── volter.ttf
+│
+├── .gitignore
 └── README.md
 ```
-
-> *The structure above may vary depending on the current version of the project.*
 
 ---
 
@@ -91,10 +95,10 @@ Clone the repository:
 git clone https://github.com/LuizLee1125/FNAF-1-in-Web.git
 ```
 
-Navigate into the project directory:
+Navigate into the backend directory:
 
 ```bash
-cd FNAF-1-in-Web
+cd FNAF-1-in-Web/backend
 ```
 
 Install dependencies:
